@@ -28,21 +28,32 @@ export default function Signup() {
       return;
     }
     setLoading(true);
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: { full_name: fullName },
-        emailRedirectTo: window.location.origin,
       },
     });
-    setLoading(false);
+
     if (error) {
+      setLoading(false);
       toast({ title: "Signup failed", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "Check your email", description: "We've sent you a confirmation link." });
-      navigate("/login");
+      return;
     }
+
+    if (!data.session) {
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      if (signInError) {
+        setLoading(false);
+        toast({ title: "Signup succeeded, login failed", description: signInError.message, variant: "destructive" });
+        return;
+      }
+    }
+
+    setLoading(false);
+    toast({ title: "Account created", description: "Welcome to FurniStudio." });
+    navigate("/dashboard");
   };
 
   const handleGoogleSignup = async () => {
