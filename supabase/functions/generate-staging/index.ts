@@ -8,40 +8,58 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// ── MANDATORY Product Preservation Prefix ──
-const PRODUCT_PRESERVATION = `CRITICAL INSTRUCTION: You are receiving a furniture product image. This furniture must appear IDENTICALLY in the output:
-- EXACT same shape and silhouette - do not alter proportions
-- EXACT same materials - if velvet, show velvet; if leather, show leather
-- EXACT same color - match the precise shade and tone
-- EXACT same details - every button, stitch, leg, arm, cushion, hardware
-- EXACT same texture - fabric weave, wood grain, metal finish
-- This is the SAME product, not a similar one
-- ONLY add a new background environment around it
-- DO NOT regenerate or reinterpret the furniture`;
+// ── MANDATORY Product Preservation Prefix (Nano Banana Pro) ──
+const PRODUCT_PRESERVATION = `PRIMARY REFERENCE PRESERVATION: The uploaded furniture image must appear IDENTICALLY in the output. Maintain:
+- EXACT silhouette and proportions - do not alter shape
+- EXACT materials - if velvet show velvet, if leather show leather, if oak show oak
+- EXACT colors and tones - match precise shades
+- EXACT details - every button, stitch, seam, leg, arm, cushion, hardware
+- EXACT textures - fabric weave, wood grain, metal finish
+This is product photography - the furniture must be the SAME product, not a similar one. Only the background environment changes.`;
 
-// ── Technical Flavor (appended to every prompt) ──
-const TECHNICAL_FLAVOR = `[TECHNICAL FLAVOR]: Subtle depth of field with background slightly soft. Natural material textures clearly rendered. Gentle photographic grain visible at full resolution.`;
+// ── Photorealistic Imperfections Pool ──
+const IMPERFECTIONS = [
+  "Subtle handheld camera micro-vibration suggesting a real photographer held the camera",
+  "Slight chromatic aberration visible at the far edges of the frame",
+  "Natural film grain barely visible in the shadow areas at full resolution",
+  "Gentle depth of field drift softening the background gradually",
+  "Faint lens vignette darkening the extreme corners of the image",
+  "Dust particles faintly visible in the window light shaft",
+  "Natural sensor noise in the deepest shadow regions",
+];
 
-// ── Camera Angle Prompts ──
+function pickImperfections(count = 2): string[] {
+  const shuffled = [...IMPERFECTIONS].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, count);
+}
+
+// ── Camera Angle Prompts (full sentences, no keyword tags) ──
 const CAMERA_ANGLE_PROMPTS: Record<string, string> = {
-  standard: "Camera at eye level, straight-on view of the furniture.",
-  elevated: "Camera positioned slightly above at 30-degree downward angle, showing top surface and front.",
-  low_angle: "Camera low to ground, angled upward, making furniture appear grand and substantial.",
-  side_profile: "Camera at 90-degree side angle, showing furniture profile silhouette.",
-  corner_view: "Camera at 45-degree angle showing front and side, three-quarter view.",
+  standard: "The camera is positioned at eye level, looking straight on at the furniture piece, creating a direct and honest perspective that a customer would see in a showroom.",
+  elevated: "The camera is positioned slightly above at approximately a 30-degree downward angle, revealing the top surface and front of the furniture in a classic three-quarter overhead view.",
+  low_angle: "The camera is positioned low to the ground, angled upward toward the furniture, making it appear grand and substantial with an aspirational quality.",
+  side_profile: "The camera is positioned at a precise 90-degree side angle, capturing the full silhouette profile of the furniture piece against the room environment.",
+  corner_view: "The camera is positioned at a 45-degree angle showing both the front face and one side of the furniture, creating a dimensional three-quarter view.",
 };
 
-// ── Template definitions using C.S.S.T. framework ──
+// ── Template definitions using C.S.S.T. framework (Nano Banana Pro) ──
 interface TemplateConfig {
   mood: string;
   contextAnchor: string;
   roomDescription: string;
+  wallDescription: string;
   flooring: string;
+  flooringDirection: string;
   lightSource: string;
+  lightQuality: string;
+  lightDirection: string;
   shadowDirection: string;
-  propsDecor: string;
-  lightingDescription: string;
+  propsPositioned: string;
+  materialBehavior: string;
+  lightingSetup: string;
   styleReference: string;
+  lensSpec: string;
+  atmosphere: string;
 }
 
 // ── Room Lock structure for batch consistency ──
@@ -49,6 +67,9 @@ interface RoomLock {
   room_template: string;
   wall_color: string;
   floor: string;
+  floor_direction: string;
+  light_source: string;
+  light_quality: string;
   light_direction: string;
   shadow_direction: string;
   props: string[];
@@ -58,201 +79,303 @@ interface RoomLock {
 function extractRoomLock(templateId: string, config: TemplateConfig): RoomLock {
   return {
     room_template: templateId,
-    wall_color: config.roomDescription,
+    wall_color: config.wallDescription,
     floor: config.flooring,
-    light_direction: config.lightSource,
+    floor_direction: config.flooringDirection,
+    light_source: config.lightSource,
+    light_quality: config.lightQuality,
+    light_direction: config.lightDirection,
     shadow_direction: config.shadowDirection,
-    props: config.propsDecor.split(",").map(s => s.trim()),
-    atmosphere: config.lightingDescription,
+    props: config.propsPositioned.split(". ").filter(Boolean),
+    atmosphere: config.atmosphere,
   };
 }
 
 const TEMPLATES: Record<string, TemplateConfig> = {
-  // LIVING ROOM
+  // ═══════════ LIVING ROOM ═══════════
   scandinavian: {
     mood: "calm, clean, and effortlessly modern",
-    contextAnchor: "a Scandinavian Design Centre catalogue shot",
-    roomDescription: "a modern Scandinavian living room with floor-to-ceiling windows casting soft natural daylight, white walls, and minimal decor",
-    flooring: "light oak hardwood flooring",
-    lightSource: "Soft natural daylight from large windows on the LEFT side",
-    shadowDirection: "gentle diffused shadows falling to the RIGHT",
-    propsDecor: "a wool throw draped nearby, a monstera plant in a ceramic pot positioned rear-left, and a simple oak side table",
-    lightingDescription: "Soft, even natural daylight flooding through sheer curtains. No harsh shadows",
-    styleReference: "Kinfolk magazine interior photography, shot with 35mm lens at f/4",
+    contextAnchor: "a hero image from the Made.com product catalogue",
+    roomDescription: "a modern Scandinavian living room with floor-to-ceiling windows allowing soft natural daylight to flood the space, creating an airy and aspirational atmosphere",
+    wallDescription: "Clean white walls with a subtle matte texture that softly reflects the natural daylight",
+    flooring: "light oak hardwood",
+    flooringDirection: "with grain running left to right across the frame",
+    lightSource: "A large floor-to-ceiling window",
+    lightQuality: "soft diffused natural morning light",
+    lightDirection: "positioned on the LEFT side of the room",
+    shadowDirection: "Shadows fall gently to the RIGHT, with the furniture casting a soft diffused shadow on the floor matching the window light angle",
+    propsPositioned: "A monstera plant in a white ceramic pot positioned in the rear-left of the frame. A grey wool throw draped casually nearby. A simple oak side table with a small ceramic vase placed to the right",
+    materialBehavior: "The oak floor catches a soft natural reflection from the window light, grounding the furniture with realistic weight",
+    lightingSetup: "Soft diffused window light as key from the left, gentle ambient fill bouncing from the white walls, subtle rim light separating furniture from the background",
+    styleReference: "the clean naturalistic look of Kinfolk magazine interior photography",
+    lensSpec: "Shot with a 35mm lens at f/4",
+    atmosphere: "bright, airy, and aspirational Scandinavian morning",
   },
   contemporary_grey: {
     mood: "warm, sophisticated, and inviting",
-    contextAnchor: "a Habitat or Made.com lifestyle shoot",
-    roomDescription: "a contemporary living room with warm grey walls and soft afternoon light filtering through sheer curtains",
-    flooring: "a textured wool area rug over grey-toned engineered wood",
-    lightSource: "Warm afternoon sun filtering through sheer curtains on the RIGHT side",
-    shadowDirection: "soft warm shadows falling to the LEFT",
-    propsDecor: "minimalist abstract art on the wall, a ceramic vase with dried pampas grass rear-right, and stacked coffee table books",
-    lightingDescription: "Warm, golden-hour afternoon light with gentle shadow play",
-    styleReference: "Elle Decoration UK editorial, shot with 50mm lens at f/4",
+    contextAnchor: "a lifestyle editorial spread in Elle Decoration UK",
+    roomDescription: "a contemporary living room with warm grey walls that create a cocooning atmosphere, with soft afternoon light filtering through sheer linen curtains",
+    wallDescription: "Warm grey walls with a subtle flat paint finish that absorbs light softly without harsh reflections",
+    flooring: "grey-toned engineered wood partially covered by a textured wool area rug",
+    flooringDirection: "with planks running diagonally from rear-left to front-right",
+    lightSource: "Sheer linen curtains diffusing afternoon sunlight",
+    lightQuality: "warm golden-hour afternoon light",
+    lightDirection: "positioned on the RIGHT side of the room",
+    shadowDirection: "Shadows fall softly to the LEFT with warm tones, creating gentle depth across the scene",
+    propsPositioned: "Minimalist abstract art in a thin black frame hung on the rear wall. A tall ceramic vase with dried pampas grass positioned rear-right. Stacked coffee table books on a low side table to the left",
+    materialBehavior: "The textured rug absorbs light with no specular highlights while the engineered wood shows subtle directional reflections",
+    lightingSetup: "Warm afternoon window light as key from the right, ambient grey wall bounce as fill, gentle rim highlight from window reflections",
+    styleReference: "the warm sophisticated aesthetic of Elle Decoration UK editorial photography",
+    lensSpec: "Shot with a 50mm lens at f/4",
+    atmosphere: "warm, sophisticated afternoon with golden undertones",
   },
   cozy_british: {
     mood: "rich, traditional, and quintessentially British",
-    contextAnchor: "a Country Life or Homes & Gardens magazine feature",
-    roomDescription: "a classic British drawing room with a traditional fireplace on the LEFT wall, gilt mirror above, and tall sash windows with floor-length velvet curtains",
-    flooring: "dark oak parquet with a Persian rug",
-    lightSource: "Soft natural light from tall sash windows on the RIGHT mixed with warm firelight glow from the LEFT",
-    shadowDirection: "warm layered shadows with firelight creating depth",
-    propsDecor: "leather-bound books on shelves rear-left, a silver tea service on a side table right, fresh flowers in a crystal vase, and velvet cushions",
-    lightingDescription: "Rich, warm interior light mixing window daylight with ambient fireplace glow",
-    styleReference: "Country Life magazine interiors, shot with 50mm lens at f/4",
+    contextAnchor: "a feature spread from Country Life magazine or Homes and Gardens",
+    roomDescription: "a classic British drawing room with a traditional marble fireplace on the left wall, a gilt mirror hanging above it, and tall sash windows with floor-length velvet curtains in deep burgundy",
+    wallDescription: "Cream-painted walls with traditional picture rail moulding and a warm patina that suggests heritage and warmth",
+    flooring: "dark oak parquet laid in a herringbone pattern, partially covered by a traditional Persian rug with deep reds and navy",
+    flooringDirection: "with herringbone pattern angled from the front-left to rear-right",
+    lightSource: "Tall sash windows with natural daylight mixing with warm amber firelight from the fireplace",
+    lightQuality: "a rich blend of cool window daylight and warm fireplace glow",
+    lightDirection: "Natural light from the RIGHT through sash windows, warm fire glow from the LEFT fireplace",
+    shadowDirection: "Warm layered shadows with complex depth from the dual light sources, firelight creating soft pools on the rug",
+    propsPositioned: "Leather-bound books arranged on built-in shelves in the rear-left alcove. A silver tea service placed on an occasional table to the right. Fresh flowers in a crystal vase on the mantelpiece. Velvet cushions in deep jewel tones scattered appropriately",
+    materialBehavior: "The dark oak parquet shows subtle reflections from the window light while the Persian rug absorbs light with rich colour saturation",
+    lightingSetup: "Dual key lighting from window daylight and warm fireplace glow, ambient bounce from cream walls, subtle highlights on silver and crystal objects",
+    styleReference: "the warm traditional aesthetic of Country Life magazine interior photography",
+    lensSpec: "Shot with a 50mm lens at f/4",
+    atmosphere: "rich, warm, and inviting British country house in late afternoon",
   },
   luxury_penthouse: {
     mood: "glamorous, aspirational, and urban-luxe",
-    contextAnchor: "a Robb Report or Architectural Digest penthouse feature",
-    roomDescription: "a luxury penthouse apartment with floor-to-ceiling windows revealing a city skyline at golden hour",
-    flooring: "polished Italian marble with subtle veining and gentle reflections",
-    lightSource: "Golden hour sunlight streaming through panoramic windows from the LEFT",
-    shadowDirection: "long dramatic golden shadows stretching to the RIGHT across the marble floor",
-    propsDecor: "sculptural designer lighting rear-right, a curated art piece on the wall, and a champagne-toned accent table",
-    lightingDescription: "Dramatic golden-hour light with rich warm tones and defined highlights on marble surfaces",
-    styleReference: "Architectural Digest luxury editorial, shot with 24mm lens at f/5.6",
+    contextAnchor: "a feature in Architectural Digest showcasing a London penthouse at golden hour",
+    roomDescription: "a luxury penthouse apartment with floor-to-ceiling panoramic windows revealing a city skyline bathed in golden hour light, creating dramatic long shadows across the interior",
+    wallDescription: "Minimal white walls with floor-to-ceiling glass creating an expansive open feel against the city backdrop",
+    flooring: "polished Italian Calacatta marble with subtle gold veining",
+    flooringDirection: "with veining running diagonally across the floor, catching and reflecting the golden light",
+    lightSource: "Golden hour sunlight streaming through panoramic floor-to-ceiling windows",
+    lightQuality: "dramatic golden-hour light with rich warm tones and defined highlights",
+    lightDirection: "positioned on the LEFT through the panoramic windows",
+    shadowDirection: "Long dramatic golden shadows stretch to the RIGHT across the marble floor, with warm light creating specular highlights on the polished marble surface",
+    propsPositioned: "A sculptural designer floor lamp positioned rear-right casting a warm pool of accent light. A curated contemporary art piece on the far wall. A champagne-toned accent table with a design book placed nearby",
+    materialBehavior: "The polished marble floor creates clear reflections of the furniture and golden light, showing realistic specular highlights where the angle catches the veining",
+    lightingSetup: "Dramatic golden-hour key light from the left panoramic windows, marble floor acting as a natural reflector providing fill from below, rim light from sky glow separating furniture from the cityscape",
+    styleReference: "the dramatic luxury of Architectural Digest penthouse editorial photography",
+    lensSpec: "Shot with a 24mm wide-angle lens at f/5.6",
+    atmosphere: "glamorous urban golden hour with city skyline backdrop",
   },
   minimalist_white: {
     mood: "pure, stark, and gallery-like",
-    contextAnchor: "a Vitsoe or Vitra minimalist showroom photograph",
-    roomDescription: "a pure minimalist interior with white walls and stark directional light from a single large window on the LEFT. Almost no decor—the furniture is the sole focal point",
-    flooring: "light polished concrete",
-    lightSource: "Single directional light from one large window on the LEFT",
-    shadowDirection: "clean defined shadows falling sharply to the RIGHT",
-    propsDecor: "virtually nothing—pure negative space with perhaps a single geometric object",
-    lightingDescription: "Stark, clean directional light creating bold contrast between light and shadow",
-    styleReference: "Cereal magazine minimalism, shot with 35mm lens at f/8",
+    contextAnchor: "a minimalist interior photograph from Cereal magazine",
+    roomDescription: "a pure minimalist interior with stark white walls and a single large window providing bold directional light, creating a gallery-like space where the furniture is the sole focal point",
+    wallDescription: "Pure white walls with a completely clean matte finish, creating a gallery-like negative space around the furniture",
+    flooring: "light polished concrete with a subtle sheen",
+    flooringDirection: "with a seamless uniform surface reflecting soft directional light from the window",
+    lightSource: "A single large window",
+    lightQuality: "stark clean directional light creating bold contrast between illuminated and shadowed areas",
+    lightDirection: "positioned on the LEFT side of the room",
+    shadowDirection: "Clean defined shadows fall sharply to the RIGHT, creating bold graphic contrast on the polished concrete floor",
+    propsPositioned: "A completely empty room with only the furniture as the focal point and perhaps a single geometric object placed at a deliberate distance to provide scale",
+    materialBehavior: "The polished concrete floor catches a subtle reflection of the furniture base, grounding it with realistic weight against the stark environment",
+    lightingSetup: "Single directional key light from the left window creating bold shadow contrast, minimal fill allowing deep shadow areas, no artificial lighting",
+    styleReference: "the stark minimalist aesthetic of Cereal magazine photography",
+    lensSpec: "Shot with a 35mm lens at f/8 for maximum sharpness throughout",
+    atmosphere: "stark, pure, and contemplative minimalism",
   },
-  // BEDROOM
+
+  // ═══════════ BEDROOM ═══════════
   serene_bedroom: {
     mood: "peaceful, soft, and sanctuary-like",
-    contextAnchor: "a The White Company or Loaf bedroom catalogue",
-    roomDescription: "a serene bedroom with soft white walls, gentle morning light filtering through linen curtains on the RIGHT",
+    contextAnchor: "a product photograph from The White Company bedroom catalogue",
+    roomDescription: "a serene bedroom sanctuary with soft white walls and gentle morning light filtering through lightweight linen curtains, creating an ethereal dreamy atmosphere with layered white bedding",
+    wallDescription: "Soft white walls with a warm undertone that glows gently in the morning light",
     flooring: "plush cream carpet",
-    lightSource: "Gentle morning sunlight filtering through linen curtains on the RIGHT",
-    shadowDirection: "very soft diffused shadows falling to the LEFT with minimal contrast",
-    propsDecor: "layered white and cream textiles, a ceramic bedside lamp on the left, and a small vase of dried eucalyptus",
-    lightingDescription: "Soft, dreamy morning light with a warm glow. Ethereal and calming atmosphere",
-    styleReference: "The White Company brand photography, shot with 50mm lens at f/2.8",
+    flooringDirection: "with a deep soft pile that shows subtle directional texture from the furniture's placement",
+    lightSource: "Lightweight linen curtains diffusing gentle morning sunlight",
+    lightQuality: "soft dreamy morning light with a warm golden glow",
+    lightDirection: "positioned on the RIGHT side of the room",
+    shadowDirection: "Very soft diffused shadows fall gently to the LEFT with minimal contrast, creating an ethereal quality throughout",
+    propsPositioned: "Layered white and cream textiles arranged naturally on nearby surfaces. A ceramic bedside lamp with a warm linen shade placed on the left. A small clear glass vase with dried eucalyptus stems on a bedside table",
+    materialBehavior: "The plush carpet compresses subtly under the furniture weight, showing realistic contact points where the furniture meets the floor",
+    lightingSetup: "Soft diffused morning light as gentle key from the right, warm ambient fill bouncing from cream walls and textiles, no harsh shadows anywhere",
+    styleReference: "the dreamy aspirational photography of The White Company brand campaigns",
+    lensSpec: "Shot with a 50mm lens at f/2.8 for gentle background softness",
+    atmosphere: "peaceful dreamy morning sanctuary",
   },
   boutique_hotel: {
     mood: "moody, luxurious, and intimate",
-    contextAnchor: "a boutique hotel feature in Condé Nast Traveller",
-    roomDescription: "a boutique hotel room with dark forest green walls, brass pendant lights casting warm pools of light, and velvet cushions",
-    flooring: "dark herringbone timber with a plush area rug",
-    lightSource: "Warm brass pendant lights from above and subtle ambient uplighting",
-    shadowDirection: "dramatic pools of warm light with deep atmospheric shadows",
-    propsDecor: "velvet cushions in jewel tones, a brass-framed mirror on the wall, a stack of art books rear-left, and a cashmere throw",
-    lightingDescription: "Moody, warm atmospheric lighting with brass-toned highlights. Evening ambiance",
-    styleReference: "Condé Nast Traveller hotel interiors, shot with 35mm lens at f/2.8",
+    contextAnchor: "a boutique hotel interior feature in Condé Nast Traveller",
+    roomDescription: "a boutique hotel room with dark forest green walls creating an intimate cocoon, warm brass pendant lights casting pools of golden light, and rich velvet textures throughout",
+    wallDescription: "Dark forest green walls with a subtle matte finish that absorbs light and creates an intimate moody atmosphere",
+    flooring: "dark herringbone timber partially covered by a plush deep-pile area rug",
+    flooringDirection: "with herringbone pattern running from rear to front, catching warm pendant light at its edges",
+    lightSource: "Warm brass pendant lights hanging from above",
+    lightQuality: "moody warm atmospheric lighting with brass-toned golden highlights",
+    lightDirection: "positioned directly ABOVE casting downward pools of warm light",
+    shadowDirection: "Dramatic pools of warm golden light on surfaces directly below pendants, with deep atmospheric shadows in the room's corners and edges",
+    propsPositioned: "Velvet cushions in deep jewel tones of emerald and sapphire arranged naturally. A brass-framed mirror leaning against the rear wall reflecting warm light. A stack of art books placed on a side surface to the left. A cashmere throw draped with deliberate casualness",
+    materialBehavior: "The dark green walls absorb most light creating rich depth while the brass fixtures produce warm specular highlights that punctuate the moody scene",
+    lightingSetup: "Warm brass pendant as overhead key light, subtle ambient uplighting from concealed sources, deep shadow contrast in corners creating intimate atmosphere",
+    styleReference: "the moody luxurious aesthetic of Condé Nast Traveller hotel interior photography",
+    lensSpec: "Shot with a 35mm lens at f/2.8 for atmospheric shallow depth of field",
+    atmosphere: "moody intimate boutique hotel evening",
   },
   light_airy: {
     mood: "fresh, coastal, and relaxed",
-    contextAnchor: "a Neptune or seaside cottage feature in Living Etc",
-    roomDescription: "a light and airy bedroom with white shiplap walls, abundant natural light from multiple windows, and rattan accents",
+    contextAnchor: "a bedroom feature in Living Etc magazine showcasing coastal style",
+    roomDescription: "a light and airy bedroom with white shiplap walls creating horizontal texture, abundant natural light streaming through multiple windows, and natural rattan and linen accents suggesting relaxed coastal living",
+    wallDescription: "White shiplap walls with visible horizontal plank lines that add subtle texture and a coastal character",
     flooring: "bleached oak floorboards",
-    lightSource: "Bright natural daylight from multiple windows on LEFT and RIGHT",
-    shadowDirection: "light, airy shadows with high-key brightness throughout",
-    propsDecor: "rattan baskets rear-right, trailing pothos plants, linen textiles in natural tones, and a driftwood accent",
-    lightingDescription: "Bright, high-key natural light creating a fresh, sun-washed coastal feel",
-    styleReference: "Living Etc coastal interiors, shot with 35mm lens at f/4",
+    flooringDirection: "with wide planks running left to right showing natural grain variation in the bright light",
+    lightSource: "Multiple windows allowing abundant natural daylight to flood the space",
+    lightQuality: "bright high-key natural light creating a fresh sun-washed coastal feel",
+    lightDirection: "positioned on both the LEFT and RIGHT sides of the room",
+    shadowDirection: "Light airy shadows with high-key brightness throughout, minimal shadow contrast creating an open breezy atmosphere",
+    propsPositioned: "A woven rattan basket placed on the floor rear-right of the frame. Trailing pothos plants cascading from a shelf in the background. Linen textiles in natural oatmeal tones draped softly. A piece of natural driftwood placed as an accent on a surface",
+    materialBehavior: "The bleached oak floors reflect bright light with a natural matte warmth while the rattan textures catch side light showing woven detail",
+    lightingSetup: "Bright even natural daylight from multiple windows as omnidirectional key, minimal shadow fill needed due to high-key lighting, subtle warm bounce from oak floors",
+    styleReference: "the bright relaxed coastal aesthetic of Living Etc bedroom photography",
+    lensSpec: "Shot with a 35mm lens at f/4",
+    atmosphere: "bright fresh coastal morning with sun-washed openness",
   },
-  // DINING
+
+  // ═══════════ DINING ═══════════
   modern_dining: {
     mood: "sociable, warm, and contemporary",
-    contextAnchor: "a Heal's or Habitat dining collection campaign",
-    roomDescription: "a modern dining space with a statement pendant light above, large windows with a garden view on the LEFT",
+    contextAnchor: "a dining collection campaign photograph for Heal's furniture",
+    roomDescription: "a modern dining space anchored by a statement pendant light hanging directly above the table area, with large windows opening to a garden view that brings natural greenery into the scene",
+    wallDescription: "Clean contemporary white walls with a subtle warm undertone",
     flooring: "dark oak engineered wood",
-    lightSource: "Statement pendant light above plus natural window light from the LEFT side",
-    shadowDirection: "defined downward shadows from pendant with softer side-fill from LEFT windows",
-    propsDecor: "white tableware set for dinner, linen napkins, a ceramic jug with fresh greenery center-table, and simple dining chairs",
-    lightingDescription: "Warm pendant glow combined with cool natural window light creating dimensional lighting",
-    styleReference: "Heal's lifestyle campaign, shot with 24mm lens at f/5.6",
+    flooringDirection: "with long planks running from front to back, creating visual depth in the composition",
+    lightSource: "A statement pendant light hanging above combined with natural window light from the side",
+    lightQuality: "warm pendant glow combined with cool natural window light creating dimensional two-tone lighting",
+    lightDirection: "Pendant light directly ABOVE, natural window light from the LEFT side",
+    shadowDirection: "Defined downward shadows from the pendant light directly below objects, with softer side-fill shadows from the left window creating subtle depth and dimension",
+    propsPositioned: "White tableware arranged as if set for an intimate dinner on the table surface. Linen napkins folded with understated elegance. A ceramic jug with fresh greenery placed at the table centre. Simple dining chairs positioned naturally around",
+    materialBehavior: "The dark oak floor shows rich grain detail in the pendant's downward light while the white tableware creates bright contrast against the darker wood tones",
+    lightingSetup: "Warm pendant overhead as primary key, cool natural window light from left as secondary fill, ambient bounce from white walls and tableware",
+    styleReference: "the warm contemporary aesthetic of Heal's lifestyle campaign photography",
+    lensSpec: "Shot with a 24mm wide-angle lens at f/5.6",
+    atmosphere: "warm sociable contemporary dining at early evening",
   },
   rustic_farmhouse: {
-    mood: "honest, warm, and countryside charm",
-    contextAnchor: "a feature in Country Homes & Interiors magazine",
-    roomDescription: "a rustic farmhouse dining room with exposed ceiling beams, whitewashed walls, and vintage character",
+    mood: "honest, warm, and full of countryside charm",
+    contextAnchor: "a feature in Country Homes and Interiors magazine",
+    roomDescription: "a rustic farmhouse dining room with exposed ceiling beams showing natural aged timber, whitewashed walls with gentle texture, and vintage character throughout that suggests generations of family meals",
+    wallDescription: "Whitewashed rough plaster walls with gentle texture and subtle imperfections that convey authentic farmhouse character",
     flooring: "reclaimed wide-plank timber",
-    lightSource: "Warm natural light from a farmhouse window on the RIGHT plus vintage pendant lights above",
-    shadowDirection: "warm, textured shadows with beam patterns on the table",
-    propsDecor: "a linen table runner, a ceramic pitcher with wildflowers center-table, mismatched vintage chairs, and a bread board with artisan loaf",
-    lightingDescription: "Warm, rustic lighting mixing natural window light with vintage pendant glow",
-    styleReference: "Country Homes & Interiors editorial, shot with 35mm lens at f/4",
+    flooringDirection: "with broad planks showing natural knots and patina running from left to right",
+    lightSource: "A farmhouse window with natural light combined with a vintage pendant light hanging above the table",
+    lightQuality: "warm rustic lighting mixing soft natural window daylight with amber vintage pendant glow",
+    lightDirection: "Natural light from the RIGHT through a farmhouse window, pendant light from ABOVE",
+    shadowDirection: "Warm textured shadows with ceiling beam patterns casting across the table surface, creating an authentic interplay of natural and pendant light",
+    propsPositioned: "A linen table runner laid along the table centre. A ceramic pitcher filled with freshly gathered wildflowers placed at the centre. Mismatched vintage chairs positioned around the table with natural casualness. A wooden bread board with an artisan loaf placed nearby",
+    materialBehavior: "The reclaimed timber floor absorbs light warmly showing rich patina and age marks while the whitewashed walls diffuse light softly throughout the room",
+    lightingSetup: "Dual key lighting from farmhouse window daylight and warm pendant overhead, soft ambient bounce from whitewashed walls, beam shadow patterns adding texture",
+    styleReference: "the authentic warm aesthetic of Country Homes and Interiors editorial photography",
+    lensSpec: "Shot with a 35mm lens at f/4",
+    atmosphere: "honest warm countryside farmhouse with afternoon light",
   },
-  // OFFICE
+
+  // ═══════════ OFFICE ═══════════
   modern_office: {
     mood: "productive, clean, and inspiring",
-    contextAnchor: "a John Lewis home office collection shoot",
-    roomDescription: "a modern home office with clean white walls, a large window with city or garden view on the LEFT, and built-in shelving on the RIGHT wall",
-    flooring: "light timber or clean carpet",
-    lightSource: "Bright natural daylight from a large window on the LEFT",
-    shadowDirection: "clean shadows from LEFT window light falling to the RIGHT across the desk area",
-    propsDecor: "neatly arranged books on RIGHT shelving, a small potted plant on desk, a designer desk lamp, and minimal desk accessories",
-    lightingDescription: "Bright, focused natural daylight ideal for a productive workspace",
-    styleReference: "John Lewis Home campaign photography, shot with 35mm lens at f/5.6",
+    contextAnchor: "a home office collection photograph for John Lewis Home",
+    roomDescription: "a modern home office with clean white walls creating a focused productive atmosphere, a large window providing bright desk-side natural light, and built-in shelving on one wall displaying curated objects",
+    wallDescription: "Clean white walls with a crisp finish that maximises the natural light reflection throughout the workspace",
+    flooring: "light timber or clean light-toned carpet",
+    flooringDirection: "with a uniform clean appearance that keeps the focus on the furniture and workspace",
+    lightSource: "A large desk-side window",
+    lightQuality: "bright focused natural daylight ideal for a productive workspace atmosphere",
+    lightDirection: "positioned on the LEFT side, illuminating the desk area directly",
+    shadowDirection: "Clean defined shadows from the left window light fall to the RIGHT across the desk area, providing natural dimension without harsh contrast",
+    propsPositioned: "Neatly arranged books on the built-in shelving to the right wall. A small potted plant in a minimalist pot placed on the desk surface. A designer desk lamp positioned for task lighting. Minimal desk accessories arranged with deliberate tidiness",
+    materialBehavior: "The light timber floor provides a warm neutral base that reflects gentle light upward while the desk surface shows subtle reflections from the window",
+    lightingSetup: "Bright natural window light from the left as primary key, ambient bounce from white walls as fill, designer lamp providing warm accent task light",
+    styleReference: "the clean aspirational aesthetic of John Lewis Home campaign photography",
+    lensSpec: "Shot with a 35mm lens at f/5.6",
+    atmosphere: "bright productive modern workspace in clear morning light",
   },
   creative_studio: {
     mood: "inspiring, artistic, and industrially chic",
-    contextAnchor: "a creative workspace feature in Dezeen or Monocle",
-    roomDescription: "a creative studio space with white brick walls, large industrial windows on the LEFT, and an inspiring artistic atmosphere",
+    contextAnchor: "a creative workspace feature in Dezeen or Monocle magazine",
+    roomDescription: "a creative studio space with white brick walls creating industrial texture, large factory-style industrial windows letting in abundant natural light, and an inspiring artistic atmosphere with curated creative objects",
+    wallDescription: "White-painted brick walls with visible mortar lines and industrial texture that catches side light beautifully",
     flooring: "polished concrete",
-    lightSource: "Large industrial windows on the LEFT letting in abundant natural light",
-    shadowDirection: "industrial window-frame shadow patterns falling to the RIGHT with bright even fill",
-    propsDecor: "mood boards pinned to the rear wall, trailing plants from shelves rear-right, warm task lighting, and art supplies",
-    lightingDescription: "Bright, even industrial light with warm task-light accents",
-    styleReference: "Monocle workspace editorial, shot with 24mm lens at f/4",
+    flooringDirection: "with a seamless industrial surface showing subtle tonal variation and a gentle sheen from the window light",
+    lightSource: "Large factory-style industrial windows with metal frames",
+    lightQuality: "bright even industrial daylight with warm task-light accents",
+    lightDirection: "positioned on the LEFT side through large industrial windows",
+    shadowDirection: "Industrial window-frame shadow patterns fall across the floor to the RIGHT, with bright even fill throughout the space",
+    propsPositioned: "Mood boards and inspiration pinned to the rear brick wall in an artful arrangement. Trailing green plants cascading from shelves positioned rear-right. A warm-toned desk lamp providing accent task lighting. Art supplies and creative materials arranged with studied casualness",
+    materialBehavior: "The polished concrete floor shows subtle reflections of the industrial window light while the white brick walls create textured shadow patterns as the light grazes across them",
+    lightingSetup: "Bright industrial window light from the left as key, even bounce from white brick as fill, warm desk lamp as accent creating a creative focal point",
+    styleReference: "the inspiring industrial aesthetic of Monocle workspace editorial photography",
+    lensSpec: "Shot with a 24mm wide-angle lens at f/4",
+    atmosphere: "inspiring bright industrial creative space",
   },
-  // STUDIO / PRODUCT
+
+  // ═══════════ STUDIO / PRODUCT ═══════════
   white_background: {
     mood: "clean, professional, and product-focused",
-    contextAnchor: "a pure e-commerce product shot for a premium retailer website",
-    roomDescription: "a pure white background (RGB 255,255,255) with even, shadowless studio lighting from all angles. The product fills 85% of the frame, perfectly centered. No environment, no floor visible",
+    contextAnchor: "a pure e-commerce product photograph for a premium retailer website like John Lewis or Selfridges",
+    roomDescription: "a pure white studio background at RGB 255 255 255 with perfectly even shadowless lighting from multiple softboxes positioned around the product, filling 85 percent of the frame with the furniture perfectly centred and no visible environment or floor line",
+    wallDescription: "Pure seamless white background with absolutely no visible edges, corners, or horizon lines",
     flooring: "seamless white infinity curve",
-    lightSource: "Even multi-point studio lighting eliminating all shadows",
-    shadowDirection: "no shadows—completely even illumination",
-    propsDecor: "absolutely nothing—pure white background only",
-    lightingDescription: "Professional multi-point studio lighting for zero-shadow product photography",
-    styleReference: "Premium e-commerce product photography, shot with 85mm lens at f/11",
+    flooringDirection: "that sweeps continuously from floor to background with no visible join or shadow line",
+    lightSource: "Multiple professional studio softboxes",
+    lightQuality: "perfectly even multi-point studio lighting eliminating all directional shadows",
+    lightDirection: "positioned ALL AROUND the product from front, sides, and above",
+    shadowDirection: "A completely empty white space with absolutely no directional shadows and even illumination from all angles",
+    propsPositioned: "Absolutely nothing else in the frame. A completely empty pure white environment with only the furniture product visible",
+    materialBehavior: "Every material on the furniture is evenly lit revealing true colour and texture without any directional shadow bias",
+    lightingSetup: "Professional multi-point studio softbox setup with key, fill, hair, and background lights creating zero-shadow product illumination",
+    styleReference: "premium e-commerce product photography standards for marketplace listings",
+    lensSpec: "Shot with an 85mm lens at f/11 for maximum sharpness edge to edge",
+    atmosphere: "clinical professional studio product shot",
   },
   grey_studio: {
     mood: "professional, refined, and studio-quality",
-    contextAnchor: "a professional furniture product photograph for a premium catalogue",
-    roomDescription: "a seamless medium grey studio background with professional three-point lighting: key light from upper left, fill light from right, backlight for rim separation",
-    flooring: "seamless grey studio backdrop sweeping to floor",
-    lightSource: "Professional three-point lighting setup: key upper-left, fill right, backlight behind",
-    shadowDirection: "defined key shadow to the right with fill-softened edges and rim highlight behind",
-    propsDecor: "nothing—clean studio environment",
-    lightingDescription: "Professional three-point studio lighting with key, fill, and backlight for dimensional product photography",
-    styleReference: "High-end furniture catalogue product shot, shot with 85mm lens at f/8",
+    contextAnchor: "a professional furniture product photograph for a premium printed catalogue",
+    roomDescription: "a seamless medium grey studio background with professional three-point lighting creating dimensional product photography, with the key light from the upper left, fill light from the right, and a backlight providing rim separation",
+    wallDescription: "Seamless medium grey backdrop with no visible edges or horizon lines",
+    flooring: "seamless grey studio backdrop",
+    flooringDirection: "that sweeps continuously from floor to background in a smooth grey curve",
+    lightSource: "Professional three-point lighting rig with key, fill, and backlight",
+    lightQuality: "professional studio lighting creating dimensional highlights and controlled shadows",
+    lightDirection: "Key light from the UPPER-LEFT, fill from the RIGHT, backlight from BEHIND",
+    shadowDirection: "Defined key shadow falls to the RIGHT with softened edges from the fill light, a rim highlight behind separates the furniture from the grey background",
+    propsPositioned: "A completely empty studio environment with only the furniture product visible against the grey backdrop",
+    materialBehavior: "The three-point lighting reveals every material texture with dimensional highlights on curved surfaces and controlled shadow depth in recesses",
+    lightingSetup: "Classic three-point studio setup with key light upper-left creating form, fill light from right softening shadows, backlight providing rim separation and depth",
+    styleReference: "high-end furniture catalogue product photography with museum-quality lighting",
+    lensSpec: "Shot with an 85mm lens at f/8 for optimal sharpness",
+    atmosphere: "professional refined studio photography",
   },
   showroom_floor: {
     mood: "contextual, premium, and showroom-realistic",
-    contextAnchor: "an in-situ showroom shot for a furniture retailer like Ligne Roset or B&B Italia",
-    roomDescription: "a polished concrete showroom floor with track lighting from above. Other furniture pieces visible but tastefully blurred in the background",
-    flooring: "polished concrete showroom floor with subtle reflections",
-    lightSource: "Professional track lighting from above creating defined highlights",
-    shadowDirection: "defined downward shadows from track spots with gentle floor reflections",
-    propsDecor: "blurred companion furniture pieces in the background suggesting a curated showroom",
-    lightingDescription: "Professional showroom track lighting creating focused highlights and dimensional shadows",
-    styleReference: "Premium furniture showroom photography, shot with 50mm lens at f/2.8 for shallow depth of field",
+    contextAnchor: "an in-situ showroom photograph for a premium furniture retailer like Ligne Roset or B and B Italia",
+    roomDescription: "a polished concrete showroom floor with professional track lighting from the ceiling creating focused highlights on the furniture, with other furniture pieces visible but tastefully blurred in the background suggesting a curated showroom environment",
+    wallDescription: "A minimal showroom backdrop with other furniture forms visible as soft blurred shapes suggesting a curated retail environment",
+    flooring: "polished concrete showroom floor",
+    flooringDirection: "with a smooth surface showing subtle reflections of the furniture and track lighting above",
+    lightSource: "Professional ceiling-mounted track lighting",
+    lightQuality: "focused directional track lighting creating defined highlights and dimensional shadows on the product",
+    lightDirection: "positioned ABOVE on ceiling-mounted tracks",
+    shadowDirection: "Defined downward shadows directly beneath the furniture from the overhead track spots, with gentle reflections in the polished concrete floor",
+    propsPositioned: "Blurred companion furniture pieces visible in the background at varying distances, suggesting a thoughtfully curated showroom display without distracting from the hero piece",
+    materialBehavior: "The polished concrete floor creates soft reflections of the furniture base grounding it with visual weight, while the track lights produce defined specular highlights on any glossy or metallic furniture elements",
+    lightingSetup: "Professional overhead track lighting as key creating defined pools of light, ambient showroom fill from reflected light, background naturally darker drawing focus to the hero piece",
+    styleReference: "premium furniture showroom photography with shallow depth of field and retail atmosphere",
+    lensSpec: "Shot with a 50mm lens at f/2.8 for shallow depth of field that softens the background showroom",
+    atmosphere: "premium curated showroom floor display",
   },
 };
 
 // ── Build room lock text from stored room_lock data ──
-function buildRoomLockPrompt(roomLock: RoomLock): string {
-  return `BATCH CONSISTENCY REQUIRED: Match the EXACT room from image 1 of this batch. Same wall color, same floor, same lighting direction, same props in same positions, same atmosphere. Only the furniture product changes.
-
-Room details to match EXACTLY:
-- Room: ${roomLock.wall_color}
-- Floor: ${roomLock.floor}
-- Light source: ${roomLock.light_direction}
-- Shadow direction: ${roomLock.shadow_direction}
-- Props: ${roomLock.props.join(", ")}
-- Atmosphere: ${roomLock.atmosphere}
-
-`;
+function buildRoomLockPrompt(roomLock: RoomLock, batchIndex: number, batchTotal: number): string {
+  return `BATCH CONSISTENCY: This is image ${batchIndex + 1} of ${batchTotal}. Use IDENTICAL room environment as image 1: ${roomLock.room_template} room, ${roomLock.wall_color}, ${roomLock.floor} ${roomLock.floor_direction}, ${roomLock.light_source} ${roomLock.light_direction} casting ${roomLock.light_quality}, shadows falling ${roomLock.shadow_direction}, props in exact positions: ${roomLock.props.join(", ")}, with ${roomLock.atmosphere} atmosphere. Only the furniture product changes.`;
 }
 
 // ── Batch consistency prefix ──
@@ -268,28 +391,28 @@ function buildBatchConsistencyPrefix(
     const labelHint = batchInfo.label?.toLowerCase() || "";
     const isCloseUp = labelHint.includes("close") || labelHint.includes("detail") || labelHint.includes("fabric") || labelHint.includes("texture");
 
-    const closeUpNote = isCloseUp
-      ? "\nThis is a close-up/detail shot: show PARTIAL room background (blurred floor, partial wall visible). Same flooring color/material at edges, same lighting direction and color temperature, same ambient mood — but zoomed in on furniture detail."
-      : "";
+    let prefix = buildRoomLockPrompt(roomLock, batchInfo.index, batchInfo.total);
 
-    return `${buildRoomLockPrompt(roomLock)}This is image ${batchInfo.index + 1} of ${batchInfo.total} in a product set. ALL images must appear as if photographed in the EXACT SAME ROOM during the SAME photoshoot session.${closeUpNote}
+    if (isCloseUp) {
+      prefix += `\n\nThis is a close-up detail shot. Show partial room environment with the same ${roomLock.floor} visible at edges, same ${roomLock.light_source} direction creating consistent lighting, same ${roomLock.atmosphere} atmosphere. Background softly out of focus but clearly recognisable as the same room.`;
+    }
+
+    return prefix + "\n\n";
+  }
+
+  // For image 1, establish the room
+  if (config) {
+    return `BATCH CONSISTENCY REQUIREMENT: This is image 1 of ${batchInfo.total} in a product set. ALL images in this set must appear as if photographed in the EXACT SAME ROOM during the SAME photoshoot session. This is the HERO image that establishes the room environment precisely.
+
+Maintain identical room layout, architecture, wall colours, flooring, lighting setup, light direction, shadow angles, colour temperature, mood, background props in same positions, and time of day atmosphere across the entire set. The ONLY difference between images should be the furniture product itself.
 
 `;
   }
 
-  // For image 1, establish the room
-  const roomDetails = config
-    ? `Wall color: ${config.roomDescription}. Flooring: ${config.flooring}. Lighting setup: ${config.lightSource}, ${config.shadowDirection}. Props: ${config.propsDecor}.`
-    : "";
-
-  return `BATCH CONSISTENCY REQUIREMENT: This is image 1 of ${batchInfo.total} in a product set. ALL images in this set must appear as if photographed in the EXACT SAME ROOM during the SAME photoshoot session. This is the HERO image — establish the room environment precisely. ${roomDetails}
-
-Maintain identical room layout, architecture, wall colors, flooring, lighting setup, light direction, shadow angles, color temperature, mood, background props in same positions, and time of day atmosphere across the entire set. The ONLY difference between images should be the furniture product itself.
-
-`;
+  return "";
 }
 
-// ── Build a full C.S.S.T. prompt from a template config ──
+// ── Build a full C.S.S.T. prompt (Nano Banana Pro framework) ──
 function buildTemplatePrompt(
   config: TemplateConfig,
   aspectRatio: string,
@@ -299,20 +422,22 @@ function buildTemplatePrompt(
   roomLock: RoomLock | null = null
 ): string {
   const angleInstruction = cameraAngle && CAMERA_ANGLE_PROMPTS[cameraAngle]
-    ? ` ${CAMERA_ANGLE_PROMPTS[cameraAngle]}`
-    : " Camera at eye level, straight-on view of the furniture.";
+    ? CAMERA_ANGLE_PROMPTS[cameraAngle]
+    : "The camera is positioned at eye level, looking straight on at the furniture piece.";
 
   const batchPrefix = buildBatchConsistencyPrefix(batchInfo, config, roomLock);
+  const imperfections = pickImperfections(2);
 
-  return `${batchPrefix}[CONTEXT]: This image is for premium UK furniture e-commerce. The tone is ${config.mood}. Think of it as ${config.contextAnchor}.
+  return `${batchPrefix}[CONTEXT]: This is a premium furniture e-commerce photograph for a UK retailer website. The tone is ${config.mood}. Think of it as ${config.contextAnchor}.
 
-[SUBJECT & LOGIC]: Place this exact furniture piece naturally in ${config.roomDescription}. The furniture sits on ${config.flooring}. ${config.lightSource} casts ${config.shadowDirection}. Include ${config.propsDecor}. The furniture appears grounded with realistic contact shadows where it meets the floor. Scale is accurate for a real interior.${angleInstruction}
+[SUBJECT & LOGIC]: Place this exact furniture piece naturally in ${config.roomDescription}. The furniture sits on ${config.flooring} ${config.flooringDirection}. ${config.wallDescription}. ${config.lightSource} ${config.lightDirection} casts ${config.lightQuality} across the scene. ${config.shadowDirection}. Include ${config.propsPositioned}. The furniture appears grounded with realistic contact shadows where the base meets the floor, showing subtle compression and contact points. ${config.materialBehavior}. Scale is accurate for a real interior space. ${angleInstruction}
 
-[STYLE]: Photorealistic commercial interior photography. ${config.lightingDescription}. Reference: ${config.styleReference}.
+[STYLE]: Photorealistic commercial interior photography. ${config.lightingSetup}. The furniture materials interact with light realistically: ${config.materialBehavior}. Reference: ${config.styleReference}.
 
-${TECHNICAL_FLAVOR}
+[TECHNICAL FLAVOR]: ${config.lensSpec}. ${imperfections[0]}. ${imperfections[1]}.
 
-[OUTPUT]: ${aspectRatio || "1:1"}. ${resolution || "1k"} resolution.`;
+[ASPECT RATIO]: ${aspectRatio || "1:1"}.
+[RESOLUTION]: ${resolution || "1k"}.`;
 }
 
 // ── Build a C.S.S.T. prompt from a custom user description ──
@@ -325,20 +450,22 @@ function buildCustomPrompt(
   roomLock: RoomLock | null = null
 ): string {
   const angleInstruction = cameraAngle && CAMERA_ANGLE_PROMPTS[cameraAngle]
-    ? ` ${CAMERA_ANGLE_PROMPTS[cameraAngle]}`
+    ? CAMERA_ANGLE_PROMPTS[cameraAngle]
     : "";
 
   const batchPrefix = buildBatchConsistencyPrefix(batchInfo, null, roomLock);
+  const imperfections = pickImperfections(2);
 
-  return `${batchPrefix}[CONTEXT]: Professional UK furniture e-commerce photography. The tone is aspirational and lifestyle-focused. Think of it as a premium furniture retailer catalogue.
+  return `${batchPrefix}[CONTEXT]: This is a premium furniture e-commerce photograph for a UK retailer website. The tone is aspirational and lifestyle-focused. Think of it as a hero image from a premium furniture retailer catalogue.
 
-[SUBJECT & LOGIC]: Place this exact furniture piece naturally in ${userInput}. Ensure the furniture appears grounded with realistic contact shadows. Shadows fall correctly based on visible light sources. Scale is accurate for a real interior space.${angleInstruction}
+[SUBJECT & LOGIC]: Place this exact furniture piece naturally in ${userInput}. The furniture appears grounded with realistic contact shadows where the base meets the floor. Shadows fall correctly based on visible light sources in the scene. Scale is accurate for a real interior space. ${angleInstruction}
 
-[STYLE]: Photorealistic commercial interior photography. Natural lighting that accurately represents furniture materials. Reference: high-end British furniture retail photography.
+[STYLE]: Photorealistic commercial interior photography. Natural lighting that accurately represents furniture materials with realistic surface interactions. Reference: high-end British furniture retail photography.
 
-${TECHNICAL_FLAVOR}
+[TECHNICAL FLAVOR]: Shot with a 35mm lens at f/4. ${imperfections[0]}. ${imperfections[1]}.
 
-[OUTPUT]: ${aspectRatio || "1:1"}. ${resolution || "1k"} resolution.`;
+[ASPECT RATIO]: ${aspectRatio || "1:1"}.
+[RESOLUTION]: ${resolution || "1k"}.`;
 }
 
 const RESOLUTION_CREDITS: Record<string, number> = {
@@ -381,9 +508,9 @@ serve(async (req) => {
       : null;
 
     // Get room_lock for batch images 2+
-    let roomLockData: RoomLock | null = room_lock || null;
+    const roomLockData: RoomLock | null = room_lock || null;
 
-    // Build prompt using C.S.S.T. framework
+    // Build prompt using C.S.S.T. framework (Nano Banana Pro)
     let prompt: string;
     const templateConfig = TEMPLATES[template_id];
     if (template_id === "custom" && custom_prompt) {
@@ -461,15 +588,16 @@ serve(async (req) => {
     // Determine MIME type from filename
     const mimeType = imageRecord.filename?.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
 
-    // Call Lovable AI with CORRECT structure:
-    // 1. Preservation instruction FIRST
-    // 2. Furniture image as reference
-    // 3. Room/scene prompt
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("AI service not configured");
 
     console.log("Calling AI gateway with template:", template_id, "| Batch:", batchInfo ? `${batchInfo.index + 1}/${batchInfo.total}` : "single", "| Prompt length:", prompt.length);
 
+    // ── API CALL STRUCTURE (Nano Banana Pro) ──
+    // 1. Text: Product preservation instruction FIRST
+    // 2. Image: Furniture image as base64 reference
+    // 3. Text: Full C.S.S.T. prompt describing the room/scene
+    // Temperature: 0.3 (lower = more faithful to reference)
     const aiResponse = await fetch(
       "https://ai.gateway.lovable.dev/v1/chat/completions",
       {
@@ -496,7 +624,7 @@ serve(async (req) => {
                     url: `data:${mimeType};base64,${base64Image}`,
                   },
                 },
-                // STEP 3: The room/scene prompt
+                // STEP 3: The full C.S.S.T. room/scene prompt
                 {
                   type: "text",
                   text: prompt,
