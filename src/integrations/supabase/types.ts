@@ -19,6 +19,7 @@ export type Database = {
           created_at: string
           filename: string
           id: string
+          label: string | null
           original_url: string | null
           user_id: string
         }
@@ -26,6 +27,7 @@ export type Database = {
           created_at?: string
           filename: string
           id?: string
+          label?: string | null
           original_url?: string | null
           user_id: string
         }
@@ -33,6 +35,7 @@ export type Database = {
           created_at?: string
           filename?: string
           id?: string
+          label?: string | null
           original_url?: string | null
           user_id?: string
         }
@@ -45,8 +48,10 @@ export type Database = {
           credits_used: number
           id: string
           image_id: string | null
+          label: string | null
           output_url: string | null
           resolution: string | null
+          set_id: string | null
           status: string
           template_id: string | null
           user_id: string
@@ -57,8 +62,10 @@ export type Database = {
           credits_used?: number
           id?: string
           image_id?: string | null
+          label?: string | null
           output_url?: string | null
           resolution?: string | null
+          set_id?: string | null
           status?: string
           template_id?: string | null
           user_id: string
@@ -69,8 +76,10 @@ export type Database = {
           credits_used?: number
           id?: string
           image_id?: string | null
+          label?: string | null
           output_url?: string | null
           resolution?: string | null
+          set_id?: string | null
           status?: string
           template_id?: string | null
           user_id?: string
@@ -83,7 +92,47 @@ export type Database = {
             referencedRelation: "images"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "jobs_set_id_fkey"
+            columns: ["set_id"]
+            isOneToOne: false
+            referencedRelation: "product_sets"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      product_sets: {
+        Row: {
+          created_at: string
+          id: string
+          image_count: number
+          name: string
+          resolution: string | null
+          template_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          image_count?: number
+          name?: string
+          resolution?: string | null
+          template_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          image_count?: number
+          name?: string
+          resolution?: string | null
+          template_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       profiles: {
         Row: {
