@@ -126,7 +126,7 @@ export default function Dashboard() {
     setShowStyleModal(true);
   };
 
-  const handleGenerate = async (templateId: string, resolution: string) => {
+  const handleGenerate = async (templateId: string, resolution: string, customPrompt?: string, aspectRatio?: string) => {
     if (!selectedImage) return;
     setGenerating(true);
     setShowStyleModal(false);
@@ -140,6 +140,8 @@ export default function Dashboard() {
             image_id: selectedImage.id,
             template_id: templateId,
             resolution,
+            ...(customPrompt ? { custom_prompt: customPrompt } : {}),
+            ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}),
           },
         }
       );
