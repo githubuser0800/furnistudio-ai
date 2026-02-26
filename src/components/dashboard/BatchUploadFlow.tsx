@@ -67,6 +67,7 @@ export default function BatchUploadFlow({
   const [processingTotal, setProcessingTotal] = useState(0);
   const [resultUrls, setResultUrls] = useState<Record<string, string>>({});
   const [exportImage, setExportImage] = useState<{ url: string; name: string } | null>(null);
+  const [roomLock, setRoomLock] = useState<Record<string, unknown> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -179,6 +180,7 @@ export default function BatchUploadFlow({
             label: f.label,
             batch_index: i,
             batch_total: uploadedFiles.length,
+            ...(i > 0 && roomLock ? { room_lock: roomLock } : {}),
           },
         });
 
@@ -194,6 +196,12 @@ export default function BatchUploadFlow({
         } else if (data?.success) {
           currentCredits = data.credits_remaining;
           onCreditsChange(currentCredits);
+
+          // Capture room_lock from first image for batch consistency
+          if (i === 0 && data.room_lock) {
+            setRoomLock(data.room_lock);
+          }
+
           results.push({
             imageId: f.imageId!,
             label: f.label,

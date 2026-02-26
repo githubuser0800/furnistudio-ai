@@ -1,0 +1,1 @@
+ALTER TABLE public.product_sets ADD COLUMN room_lock jsonb DEFAULT NULL;
