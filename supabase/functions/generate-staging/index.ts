@@ -222,18 +222,49 @@ const TEMPLATES: Record<string, TemplateConfig> = {
   },
 };
 
+// ── Batch consistency prefix ──
+function buildBatchConsistencyPrefix(batchInfo: { index: number; total: number; label?: string } | null, config: TemplateConfig | null): string {
+  if (!batchInfo || batchInfo.total <= 1) return "";
+
+  const roomDetails = config
+    ? `Wall color: ${config.roomDescription}. Flooring: ${config.flooring}. Lighting setup: ${config.lightSource}, ${config.shadowDirection}. Props: ${config.propsDecor}.`
+    : "";
+
+  if (batchInfo.index === 0) {
+    return `BATCH CONSISTENCY REQUIREMENT: This is image ${batchInfo.index + 1} of ${batchInfo.total} in a product set. ALL images in this set must appear as if photographed in the EXACT SAME ROOM during the SAME photoshoot session. This is the HERO image — establish the room environment precisely. ${roomDetails}
+
+Maintain identical room layout, architecture, wall colors, flooring, lighting setup, light direction, shadow angles, color temperature, mood, background props in same positions, and time of day atmosphere across the entire set. The ONLY difference between images should be the furniture product itself and its position/angle in the scene.
+
+`;
+  }
+
+  const labelHint = batchInfo.label?.toLowerCase() || "";
+  const isCloseUp = labelHint.includes("close") || labelHint.includes("detail") || labelHint.includes("fabric") || labelHint.includes("texture");
+
+  const closeUpNote = isCloseUp
+    ? " This is a close-up/detail shot: show PARTIAL room background (blurred floor, partial wall visible). Same flooring color/material at edges, same lighting direction and color temperature, same ambient mood — but zoomed in on furniture detail."
+    : " Match the exact room environment from the first image in this batch. Same walls, floor, lighting, props, atmosphere.";
+
+  return `BATCH CONSISTENCY REQUIREMENT: This is image ${batchInfo.index + 1} of ${batchInfo.total} in a product set. ALL images in this set must appear as if photographed in the EXACT SAME ROOM during the SAME photoshoot session. ${roomDetails}${closeUpNote}
+
+`;
+}
+
 // ── Build a full C.S.S.T. prompt from a template config ──
 function buildTemplatePrompt(
   config: TemplateConfig,
   aspectRatio: string,
   resolution: string,
-  cameraAngle: string | null
+  cameraAngle: string | null,
+  batchInfo: { index: number; total: number; label?: string } | null = null
 ): string {
   const angleInstruction = cameraAngle && CAMERA_ANGLE_PROMPTS[cameraAngle]
     ? ` ${CAMERA_ANGLE_PROMPTS[cameraAngle]}`
     : " Camera at eye level, straight-on view of the furniture.";
 
-  return `${PRODUCT_PRESERVATION}
+  const batchPrefix = buildBatchConsistencyPrefix(batchInfo, config);
+
+  return `${batchPrefix}${PRODUCT_PRESERVATION}
 
 [CONTEXT]: This image is for premium UK furniture e-commerce. The tone is ${config.mood}. Think of it as ${config.contextAnchor}.
 
@@ -251,13 +282,16 @@ function buildCustomPrompt(
   userInput: string,
   aspectRatio: string,
   resolution: string,
-  cameraAngle: string | null
+  cameraAngle: string | null,
+  batchInfo: { index: number; total: number; label?: string } | null = null
 ): string {
   const angleInstruction = cameraAngle && CAMERA_ANGLE_PROMPTS[cameraAngle]
     ? ` ${CAMERA_ANGLE_PROMPTS[cameraAngle]}`
     : "";
 
-  return `${PRODUCT_PRESERVATION}
+  const batchPrefix = buildBatchConsistencyPrefix(batchInfo, null);
+
+  return `${batchPrefix}${PRODUCT_PRESERVATION}
 
 [CONTEXT]: Professional UK furniture e-commerce photography. The tone is aspirational and lifestyle-focused. Think of it as a premium furniture retailer catalogue.
 
@@ -302,14 +336,19 @@ serve(async (req) => {
     } = await supabaseUser.auth.getUser();
     if (authErr || !user) throw new Error("Unauthorized");
 
-    const { image_id, template_id, resolution, custom_prompt, aspect_ratio, camera_angle, set_id, label } = await req.json();
+    const { image_id, template_id, resolution, custom_prompt, aspect_ratio, camera_angle, set_id, label, batch_index, batch_total } = await req.json();
+
+    // Build batch info if present
+    const batchInfo = typeof batch_index === "number" && typeof batch_total === "number" && batch_total > 1
+      ? { index: batch_index, total: batch_total, label: label || undefined }
+      : null;
 
     // Build prompt using C.S.S.T. framework
     let prompt: string;
     if (template_id === "custom" && custom_prompt) {
-      prompt = buildCustomPrompt(custom_prompt, aspect_ratio, resolution, camera_angle);
+      prompt = buildCustomPrompt(custom_prompt, aspect_ratio, resolution, camera_angle, batchInfo);
     } else if (TEMPLATES[template_id]) {
-      prompt = buildTemplatePrompt(TEMPLATES[template_id], aspect_ratio, resolution, camera_angle);
+      prompt = buildTemplatePrompt(TEMPLATES[template_id], aspect_ratio, resolution, camera_angle, batchInfo);
     } else {
       throw new Error("Invalid template");
     }
