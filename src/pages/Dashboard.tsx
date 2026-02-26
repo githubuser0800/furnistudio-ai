@@ -7,7 +7,8 @@ import StyleSelectionModal from "@/components/dashboard/StyleSelectionModal";
 import ResultsView from "@/components/dashboard/ResultsView";
 import LowCreditBanner from "@/components/dashboard/LowCreditBanner";
 import CreditTopUpModal from "@/components/dashboard/CreditTopUpModal";
-import { Upload, Image as ImageIcon, Sparkles, Layers, BarChart3, ArrowRight } from "lucide-react";
+import BatchUploadFlow from "@/components/dashboard/BatchUploadFlow";
+import { Upload, Image as ImageIcon, Sparkles, Layers, BarChart3, ArrowRight, Images } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -30,7 +31,7 @@ interface RecentJob {
   created_at: string;
 }
 
-type View = "grid" | "processing" | "results";
+type View = "grid" | "processing" | "results" | "batch";
 
 const TEMPLATE_NAMES: Record<string, string> = {
   scandinavian: "Modern Scandinavian",
@@ -236,6 +237,15 @@ export default function Dashboard() {
           />
         )}
 
+        {/* Batch upload flow */}
+        {view === "batch" && (
+          <BatchUploadFlow
+            creditsRemaining={profile?.credits_remaining ?? 0}
+            onComplete={() => { setView("grid"); fetchData(); }}
+            onCreditsChange={(c) => setProfile((p) => p ? { ...p, credits_remaining: c } : p)}
+          />
+        )}
+
         {/* Default grid view */}
         {view === "grid" && (
           <>
@@ -334,21 +344,32 @@ export default function Dashboard() {
             )}
 
             {/* Upload Zone */}
-            <div
-              className={`mb-10 flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-12 transition-colors ${
-                dragOver ? "border-accent bg-accent/5" : "border-border hover:border-accent/50"
-              }`}
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={(e) => { e.preventDefault(); setDragOver(false); handleUpload(e.dataTransfer.files); }}
-              onClick={() => document.getElementById("file-input")?.click()}
-            >
-              <input id="file-input" type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleUpload(e.target.files)} />
-              <Upload className={`mb-4 h-10 w-10 ${dragOver ? "text-accent" : "text-muted-foreground"}`} />
-              <p className="mb-1 text-lg font-medium text-foreground">
-                {uploading ? "Uploading..." : "Drop furniture images here or click to browse"}
-              </p>
-              <p className="text-sm text-muted-foreground">JPG, PNG, WebP up to 10MB each</p>
+            <div className="mb-10 flex flex-col sm:flex-row gap-4">
+              <div
+                className={`flex-1 flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-10 transition-colors ${
+                  dragOver ? "border-accent bg-accent/5" : "border-border hover:border-accent/50"
+                }`}
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={(e) => { e.preventDefault(); setDragOver(false); handleUpload(e.dataTransfer.files); }}
+                onClick={() => document.getElementById("file-input")?.click()}
+              >
+                <input id="file-input" type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleUpload(e.target.files)} />
+                <Upload className={`mb-3 h-8 w-8 ${dragOver ? "text-accent" : "text-muted-foreground"}`} />
+                <p className="mb-1 text-base font-medium text-foreground">
+                  {uploading ? "Uploading..." : "Drop images here or click to browse"}
+                </p>
+                <p className="text-sm text-muted-foreground">Single image · quick staging</p>
+              </div>
+
+              <button
+                onClick={() => setView("batch")}
+                className="flex-1 flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border p-10 hover:border-accent/50 transition-colors"
+              >
+                <Images className="mb-3 h-8 w-8 text-muted-foreground" />
+                <p className="text-base font-medium text-foreground">Batch Upload</p>
+                <p className="text-sm text-muted-foreground">Up to 10 images · same style</p>
+              </button>
             </div>
 
             {/* Images Grid */}

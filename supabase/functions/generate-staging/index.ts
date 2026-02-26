@@ -90,7 +90,7 @@ serve(async (req) => {
     } = await supabaseUser.auth.getUser();
     if (authErr || !user) throw new Error("Unauthorized");
 
-    const { image_id, template_id, resolution, custom_prompt, aspect_ratio, camera_angle } = await req.json();
+    const { image_id, template_id, resolution, custom_prompt, aspect_ratio, camera_angle, set_id, label } = await req.json();
 
     // Build prompt
     let prompt: string;
@@ -161,6 +161,8 @@ serve(async (req) => {
         status: "processing",
         camera_angle: camera_angle || null,
         resolution: resolution || "1k",
+        set_id: set_id || null,
+        label: label || null,
       })
       .select()
       .single();
