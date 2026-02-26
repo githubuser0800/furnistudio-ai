@@ -3,7 +3,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -14,18 +13,35 @@ import {
   CheckCircle,
   AlertCircle,
   Download,
+  ChevronDown,
 } from "lucide-react";
 import StyleSelectionModal from "./StyleSelectionModal";
 import ExportModal from "./ExportModal";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
-const DEFAULT_LABELS = [
-  "Front view",
-  "Side view",
-  "Back view",
-  "Close-up",
-  "Fabric detail",
-  "Top view",
+const SHOT_TYPE_LABELS = [
+  { value: "Full Product", group: "Standard" },
+  { value: "3/4 Angle", group: "Standard" },
+  { value: "Side View", group: "Standard" },
+  { value: "Back View", group: "Standard" },
+  { value: "Top View", group: "Standard" },
+  { value: "Corner View", group: "Standard" },
+  { value: "Close-up: Arm", group: "Close-up" },
+  { value: "Close-up: Seat", group: "Close-up" },
+  { value: "Close-up: Leg", group: "Close-up" },
+  { value: "Close-up: Fabric", group: "Close-up" },
+  { value: "Close-up: Detail", group: "Close-up" },
+  { value: "Feature: Reclined", group: "Feature" },
+  { value: "Feature: Extended", group: "Feature" },
 ];
+
+const QUICK_LABELS = ["Full Product", "3/4 Angle", "Side View", "Close-up: Arm", "Close-up: Fabric", "Close-up: Detail"];
 
 interface StagedFile {
   file: File;
@@ -74,7 +90,7 @@ export default function BatchUploadFlow({
     const newFiles = Array.from(fileList).slice(0, 10 - files.length).map((file, i) => ({
       file,
       preview: URL.createObjectURL(file),
-      label: DEFAULT_LABELS[files.length + i] || "",
+      label: SHOT_TYPE_LABELS[files.length + i]?.value || "Full Product",
       uploaded: false,
     }));
     setFiles((prev) => [...prev, ...newFiles].slice(0, 10));
@@ -303,12 +319,18 @@ export default function BatchUploadFlow({
                   <img src={f.preview} alt={f.file.name} className="h-full w-full object-cover" />
                 </div>
                 <div className="p-2">
-                  <Input
-                    value={f.label}
-                    onChange={(e) => updateLabel(i, e.target.value)}
-                    placeholder="Label (e.g. Front view)"
-                    className="text-xs h-7"
-                  />
+                  <Select value={f.label} onValueChange={(val) => updateLabel(i, val)}>
+                    <SelectTrigger className="text-xs h-7">
+                      <SelectValue placeholder="Select shot type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SHOT_TYPE_LABELS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                          {opt.value}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <p className="text-[10px] text-muted-foreground mt-1 truncate">{f.file.name}</p>
                 </div>
               </div>
@@ -329,11 +351,11 @@ export default function BatchUploadFlow({
         {files.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             <span className="text-xs text-muted-foreground mr-1">Quick labels:</span>
-            {DEFAULT_LABELS.map((label) => (
+            {QUICK_LABELS.map((label) => (
               <button
                 key={label}
                 onClick={() => {
-                  const idx = files.findIndex((f) => !f.label);
+                  const idx = files.findIndex((f) => !f.label || f.label === "Full Product");
                   if (idx >= 0) updateLabel(idx, label);
                 }}
                 className="px-2 py-0.5 rounded-full border border-border text-[11px] text-foreground hover:bg-accent/10 transition-colors"
