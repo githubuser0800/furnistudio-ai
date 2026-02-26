@@ -153,6 +153,7 @@ serve(async (req) => {
               ],
             },
           ],
+          modalities: ["image", "text"],
         }),
       }
     );
@@ -200,24 +201,32 @@ serve(async (req) => {
     let generatedBase64: string | null = null;
     let generatedMimeType = "image/png";
 
-    const content = aiResult.choices?.[0]?.message?.content;
+    const message = aiResult.choices?.[0]?.message;
 
-    if (Array.isArray(content)) {
+    // Check message.images[] (Lovable AI gateway format)
+    const images = message?.images;
+    if (Array.isArray(images) && images.length > 0) {
+      const imgUrl = images[0]?.image_url?.url;
+      if (imgUrl) {
+        const match = imgUrl.match(/^data:([^;]+);base64,(.+)$/s);
+        if (match) {
+          generatedMimeType = match[1];
+          generatedBase64 = match[2];
+        }
+      }
+    }
+
+    // Fallback: check content array
+    const content = message?.content;
+    if (!generatedBase64 && Array.isArray(content)) {
       for (const part of content) {
         if (part.type === "image_url" && part.image_url?.url) {
-          const match = part.image_url.url.match(
-            /^data:([^;]+);base64,(.+)$/s
-          );
+          const match = part.image_url.url.match(/^data:([^;]+);base64,(.+)$/s);
           if (match) {
             generatedMimeType = match[1];
             generatedBase64 = match[2];
             break;
           }
-        }
-        if (part.inline_data) {
-          generatedMimeType = part.inline_data.mime_type || "image/png";
-          generatedBase64 = part.inline_data.data;
-          break;
         }
       }
     }
