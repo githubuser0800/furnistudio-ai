@@ -43,23 +43,118 @@ const CAMERA_ANGLE_PROMPTS: Record<string, string> = {
 };
 
 // ── View-specific prompts for batch editing (images 2+) ──
-const VIEW_PROMPTS: Record<string, string> = {
-  "front view": "Place the product facing the camera straight-on, in the centre of the room where the original furniture was. Full front face visible.",
-  "side view": "Place the product showing its 90-degree side profile, positioned to show the full side while the room stays identical.",
-  "back view": "Place the product showing its back, rotated 180 degrees from front, in the same room position.",
-  "close-up": "Zoom in on the product showing detail. The room is visible partially in the background with the same walls, same floor colour, same lighting direction. Use a shallow depth of field.",
-  "fabric detail": "Extreme close-up of the product material and fabric texture. A hint of the same room environment is softly blurred in the background. Same lighting direction and colour temperature.",
-  "top view": "Elevated angle looking directly down at the product. The same room floor is visible around the product, with the same lighting from the same direction.",
-  "corner view": "45-degree three-quarter angle showing both the front and one side of the product. Same room, same position as the original furniture.",
+// ── Shot-type definitions: framing instruction + dedicated prompt builder ──
+interface ShotType {
+  framing: string;
+  buildPrompt: (roomConfig: TemplateConfig | null) => string;
+}
+
+const SHOT_TYPES: Record<string, ShotType> = {
+  "full product": {
+    framing: "Full catalog view showing the entire piece. Furniture centered, fills approximately 60 percent of the frame. Full room environment visible around it.",
+    buildPrompt: (cfg) => cfg
+      ? `Place this exact furniture in the room. Full catalog view showing the entire piece. Furniture centered, fills approximately 60 percent of the frame. Full room environment visible. ${cfg.wallDescription}. ${cfg.flooring} ${cfg.flooringDirection} floor visible. ${cfg.lightSource} casting ${cfg.lightQuality}. ${cfg.propsPositioned}.`
+      : "Place this exact furniture in the room. Full catalog view showing the entire piece. Furniture centered, fills approximately 60 percent of the frame. Full room environment visible.",
+  },
+  "3/4 angle": {
+    framing: "Same 3/4 angle as the reference image. Furniture at a 45-degree angle showing front and one side. Room visible but furniture is the hero.",
+    buildPrompt: (cfg) => cfg
+      ? `Place this exact furniture at a 45-degree three-quarter angle showing both the front face and one side, matching the reference image angle. The furniture is the hero of the shot with the room providing context. ${cfg.wallDescription}. ${cfg.flooring} floor visible. ${cfg.lightSource} casting ${cfg.lightQuality}.`
+      : "Place this exact furniture at a 45-degree three-quarter angle showing both the front face and one side. Room visible but furniture is the hero.",
+  },
+  "side view": {
+    framing: "90-degree side profile matching the reference image. Full side of the furniture visible.",
+    buildPrompt: (cfg) => cfg
+      ? `Place this exact furniture showing its full 90-degree side profile, matching the reference angle. The complete side silhouette is visible. ${cfg.wallDescription} visible behind. ${cfg.flooring} ${cfg.flooringDirection} floor visible beneath. ${cfg.lightSource} casting ${cfg.lightQuality}.`
+      : "Place this exact furniture showing its full 90-degree side profile. Room stays identical.",
+  },
+  "back view": {
+    framing: "Back of the furniture visible, rotated 180 degrees from front. Same room position.",
+    buildPrompt: (cfg) => cfg
+      ? `Place this exact furniture showing its back, rotated 180 degrees from front view, in the same room position. The rear design, any back panel detail, and construction are visible. ${cfg.wallDescription} visible. ${cfg.flooring} floor beneath.`
+      : "Place this exact furniture showing its back, rotated 180 degrees from front. Room stays identical.",
+  },
+  "close-up: arm": {
+    framing: "Close-up shot tightly framing the armrest area. Arm fills approximately 70 percent of the frame. Room visible as soft blurred background.",
+    buildPrompt: (cfg) => {
+      const room = cfg ? `Background shows ${cfg.wallDescription.toLowerCase()} wall softly out of focus. ${cfg.flooring} floor partially visible at the bottom edge. Lighting from ${cfg.lightDirection} consistent with the room template. Same ${cfg.atmosphere} mood and colour temperature.` : "Room visible as soft blurred background with same lighting direction.";
+      return `Close-up shot focusing on the armrest of this furniture IN the room setting. Frame tightly on the arm area so the arm fills approximately 70 percent of the frame. PRESERVE the exact arm shape, curves, stitching, and fabric texture from the reference image. ${room} Shallow depth of field at f/2.8 equivalent.`;
+    },
+  },
+  "close-up: seat": {
+    framing: "Close-up of the seat/cushion area. Seat fills approximately 70 percent of the frame. Room visible as soft blurred background.",
+    buildPrompt: (cfg) => {
+      const room = cfg ? `Background shows ${cfg.wallDescription.toLowerCase()} softly out of focus. ${cfg.flooring} floor partially visible. Lighting from ${cfg.lightDirection}. Same ${cfg.atmosphere} mood.` : "Room visible as soft blurred background.";
+      return `Close-up shot focusing on the seat and cushion area of this furniture IN the room setting. Frame tightly so the seat fills approximately 70 percent of the frame. PRESERVE exact cushion shape, fabric texture, any piping or stitching from the reference. ${room} Shallow depth of field at f/2.8 equivalent.`;
+    },
+  },
+  "close-up: leg": {
+    framing: "Close-up of legs/base. Leg and lower furniture fills the frame. Room floor CLEARLY visible with contact shadow.",
+    buildPrompt: (cfg) => {
+      const room = cfg ? `${cfg.flooring} ${cfg.flooringDirection} floor clearly visible with a realistic contact shadow where the leg meets the floor. ${cfg.wallDescription} wall visible in the soft background. Lighting consistent with ${cfg.lightDirection}.` : "Room floor clearly visible with contact shadow. Wall visible in soft background.";
+      return `Close-up shot of the furniture leg and base area IN the room setting. Frame tightly on the leg and lower body so it fills the majority of the frame. PRESERVE the exact leg shape, material, finish, and any hardware from the reference image. ${room} Show realistic contact where the leg meets the floor.`;
+    },
+  },
+  "close-up: fabric": {
+    framing: "Extreme close-up of fabric texture. Fabric fills 90 percent of the frame. Very shallow depth of field. Hint of room in background.",
+    buildPrompt: (cfg) => {
+      const room = cfg ? `Lighting colour temperature matches the ${cfg.atmosphere} room template. Tiny hint of ${cfg.wallDescription.toLowerCase()} colour in any soft background blur.` : "Hint of room lighting and colour temperature in background.";
+      return `Extreme close-up of the fabric texture of this furniture, macro-style shot IN the room setting. Fabric fills 90 percent of the frame. PRESERVE the exact fabric weave, texture, colour, and any stitching from the reference image. Very shallow depth of field. ${room}`;
+    },
+  },
+  "close-up: detail": {
+    framing: "Tight detail shot of buttons, stitching, hardware, or mechanisms. Detail centered and fills majority of frame.",
+    buildPrompt: (cfg) => {
+      const room = cfg ? `Lighting direction from ${cfg.lightDirection}. Soft room ambiance of ${cfg.atmosphere} in minimal visible background.` : "Professional product detail photography lighting.";
+      return `Tight detail shot of the buttons, stitching, or hardware visible in this furniture reference image, IN the room setting. Detail centered and fills the majority of the frame. PRESERVE every element exactly as shown in the reference. Surrounding fabric and material matches the reference exactly. ${room} Professional product detail photography style.`;
+    },
+  },
+  "feature: reclined": {
+    framing: "Furniture shown in reclined/extended position matching the reference. Full or 3/4 view.",
+    buildPrompt: (cfg) => cfg
+      ? `Show this furniture in its reclined position in the room, matching the EXACT mechanism state from the reference image. PRESERVE the exact position of the recline mechanism. Full view showing the entire piece in its functional configuration. ${cfg.wallDescription}. ${cfg.flooring} floor. ${cfg.lightSource} casting ${cfg.lightQuality}. ${cfg.propsPositioned}.`
+      : "Show this furniture in its reclined position matching the reference. Full view in the room.",
+  },
+  "feature: extended": {
+    framing: "Furniture shown in extended/opened position matching the reference.",
+    buildPrompt: (cfg) => cfg
+      ? `Show this furniture in its extended or opened position in the room, matching the EXACT configuration from the reference image. PRESERVE the exact mechanism position. ${cfg.wallDescription}. ${cfg.flooring} floor. ${cfg.lightSource} casting ${cfg.lightQuality}.`
+      : "Show this furniture in its extended position matching the reference. Full view in the room.",
+  },
+  "top view": {
+    framing: "Elevated angle looking down at the product. Room floor visible around it.",
+    buildPrompt: (cfg) => cfg
+      ? `Elevated angle looking directly down at the product. ${cfg.flooring} ${cfg.flooringDirection} floor visible around the product. ${cfg.lightSource} from ${cfg.lightDirection} casting light from the same direction.`
+      : "Elevated angle looking directly down at the product. Room floor visible.",
+  },
+  "corner view": {
+    framing: "45-degree three-quarter angle showing front and side. Same room, same position.",
+    buildPrompt: (cfg) => cfg
+      ? `45-degree three-quarter angle showing both the front face and one side of the product. Same room, same position as the original furniture. ${cfg.wallDescription}. ${cfg.flooring} floor. ${cfg.lightSource}.`
+      : "45-degree three-quarter angle showing front and side. Same room, same position.",
+  },
 };
 
-function getViewPrompt(label: string | undefined): string {
-  if (!label) return VIEW_PROMPTS["front view"];
+function getShotType(label: string | undefined): ShotType {
+  if (!label) return SHOT_TYPES["full product"];
   const key = label.toLowerCase().trim();
-  for (const [viewKey, prompt] of Object.entries(VIEW_PROMPTS)) {
-    if (key.includes(viewKey) || viewKey.includes(key)) return prompt;
+  // Exact match first
+  if (SHOT_TYPES[key]) return SHOT_TYPES[key];
+  // Partial match
+  for (const [shotKey, shotType] of Object.entries(SHOT_TYPES)) {
+    if (key.includes(shotKey) || shotKey.includes(key)) return shotType;
   }
-  return `Place this product in the room matching the angle described as "${label}". The room stays identical.`;
+  // Legacy label mapping
+  if (key.includes("front")) return SHOT_TYPES["full product"];
+  if (key.includes("fabric")) return SHOT_TYPES["close-up: fabric"];
+  if (key.includes("close")) return SHOT_TYPES["close-up: detail"];
+  if (key.includes("reclin")) return SHOT_TYPES["feature: reclined"];
+  if (key.includes("extend")) return SHOT_TYPES["feature: extended"];
+  // Fallback
+  return {
+    framing: `Match the angle and framing described as "${label}". The room stays identical.`,
+    buildPrompt: (cfg) => `Place this product in the room matching the angle described as "${label}". ${cfg ? `${cfg.wallDescription}. ${cfg.flooring} floor. ${cfg.lightSource}.` : "Room stays identical."}`,
+  };
 }
 
 // ── Template definitions using C.S.S.T. framework (Nano Banana Pro) ──
@@ -393,23 +488,45 @@ const TEMPLATES: Record<string, TemplateConfig> = {
   },
 };
 
-// ── Build a full C.S.S.T. prompt for IMAGE 1 (master generation) ──
+// ── Build a full C.S.S.T. prompt for IMAGE 1 (master generation) or single image ──
 function buildTemplatePrompt(
   config: TemplateConfig,
   aspectRatio: string,
   resolution: string,
   cameraAngle: string | null,
-  batchTotal: number = 1
+  batchTotal: number = 1,
+  label?: string
 ): string {
-  const angleInstruction = cameraAngle && CAMERA_ANGLE_PROMPTS[cameraAngle]
-    ? CAMERA_ANGLE_PROMPTS[cameraAngle]
-    : "The camera is positioned at eye level, looking straight on at the furniture piece.";
+  const shotType = getShotType(label);
+  const isCloseUp = (label || "").toLowerCase().includes("close-up") || (label || "").toLowerCase().includes("fabric");
+
+  // For close-ups on single images, use the shot-type specific prompt
+  const angleInstruction = isCloseUp
+    ? shotType.framing
+    : cameraAngle && CAMERA_ANGLE_PROMPTS[cameraAngle]
+      ? CAMERA_ANGLE_PROMPTS[cameraAngle]
+      : "The camera is positioned at eye level, looking straight on at the furniture piece.";
 
   const imperfections = pickImperfections(2);
 
   const batchNote = batchTotal > 1
     ? `\n\nBATCH MASTER: This is image 1 of ${batchTotal}. This generated room will be used as the MASTER BACKGROUND for all subsequent images. Make the room environment detailed, complete, and consistent so it can be reused.\n\n`
     : "";
+
+  // For close-ups in single mode, use the shot-type prompt builder
+  if (isCloseUp && batchTotal <= 1) {
+    const shotPrompt = shotType.buildPrompt(config);
+    return `${PRODUCT_PRESERVATION}
+
+${shotPrompt}
+
+[STYLE]: Photorealistic commercial interior photography. ${config.lightingSetup}. Reference: ${config.styleReference}.
+
+[TECHNICAL FLAVOR]: ${config.lensSpec}. ${imperfections[0]}. ${imperfections[1]}.
+
+[ASPECT RATIO]: ${aspectRatio || "1:1"}.
+[RESOLUTION]: ${resolution || "1k"}.`;
+  }
 
   return `${batchNote}[CONTEXT]: This is a premium furniture e-commerce photograph for a UK retailer website. The tone is ${config.mood}. Think of it as ${config.contextAnchor}.
 
@@ -453,15 +570,17 @@ function buildCustomPrompt(
 [RESOLUTION]: ${resolution || "1k"}.`;
 }
 
-// ── Build editing prompt for images 2+ (compositing product into master background) ──
+// ── Build editing prompt for images 2+ using shot-type matching ──
 function buildEditingPrompt(
   label: string | undefined,
   batchIndex: number,
   batchTotal: number,
   aspectRatio: string,
-  resolution: string
+  resolution: string,
+  templateConfig: TemplateConfig | null
 ): string {
-  const viewInstruction = getViewPrompt(label);
+  const shotType = getShotType(label);
+  const shotPrompt = shotType.buildPrompt(templateConfig);
   const imperfections = pickImperfections(2);
 
   return `EDITING TASK: You have two reference images.
@@ -476,15 +595,17 @@ IMAGE 1 (MASTER BACKGROUND): This is the room environment to PRESERVE EXACTLY. K
 IMAGE 2 (PRODUCT REFERENCE): This is the furniture product to place INTO the room.
 - Use this as the EXACT product reference
 - Match this product's shape, materials, colors, textures, and design details precisely
-- This shows the ${label || "front"} view of the product
+- The reference image shows a ${label || "full product"} view of the product
 
-TASK: Replace the furniture in Image 1 with the product from Image 2.
+SHOT TYPE MATCHING: The output MUST match the framing and angle of the product reference image.
+${shotType.framing}
+
+TASK: ${shotPrompt}
 - Keep the ENTIRE room from Image 1 unchanged - walls, floor, lighting, props, atmosphere
 - Only swap the furniture piece
-- ${viewInstruction}
-- Adjust furniture position naturally for the new angle
 - Shadows and reflections update to match the new furniture position and the existing light sources
 - Contact shadows where the furniture meets the floor must match the room's lighting direction
+- The output framing must MATCH the input reference - if the reference is a close-up, output a close-up; if full product, output full product
 - Everything else stays IDENTICAL to Image 1
 
 This is image ${batchIndex + 1} of ${batchTotal} in a product photography set. All images must look like they were shot in the exact same room during the same photoshoot session.
@@ -496,6 +617,7 @@ ${PRODUCT_PRESERVATION}
 [ASPECT RATIO]: ${aspectRatio || "1:1"}.
 [RESOLUTION]: ${resolution || "1k"}.`;
 }
+
 
 const RESOLUTION_CREDITS: Record<string, number> = {
   "1k": 1,
@@ -553,12 +675,12 @@ serve(async (req) => {
     let prompt: string;
 
     if (isSubsequentInBatch && master_background_path) {
-      // Images 2+: editing prompt (compositing product into master)
-      prompt = buildEditingPrompt(label, batch_index, batch_total, aspect_ratio, resolution);
+      // Images 2+: editing prompt with shot-type matching
+      prompt = buildEditingPrompt(label, batch_index, batch_total, aspect_ratio, resolution, templateConfig || null);
     } else if (template_id === "custom" && custom_prompt) {
       prompt = buildCustomPrompt(custom_prompt, aspect_ratio, resolution, camera_angle, isBatch ? batch_total : 1);
     } else if (templateConfig) {
-      prompt = buildTemplatePrompt(templateConfig, aspect_ratio, resolution, camera_angle, isBatch ? batch_total : 1);
+      prompt = buildTemplatePrompt(templateConfig, aspect_ratio, resolution, camera_angle, isBatch ? batch_total : 1, label);
     } else {
       throw new Error("Invalid template");
     }
