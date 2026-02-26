@@ -177,6 +177,8 @@ export default function BatchUploadFlow({
             ...(cameraAngle ? { camera_angle: cameraAngle } : {}),
             ...(setId ? { set_id: setId } : {}),
             label: f.label,
+            batch_index: i,
+            batch_total: uploadedFiles.length,
           },
         });
 
