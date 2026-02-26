@@ -11,7 +11,6 @@ import {
   X,
   Plus,
   Sparkles,
-  Image as ImageIcon,
   CheckCircle,
   AlertCircle,
   Download,
@@ -32,7 +31,7 @@ interface StagedFile {
   file: File;
   preview: string;
   label: string;
-  imageId?: string; // after upload
+  imageId?: string;
   uploaded: boolean;
 }
 
@@ -65,9 +64,8 @@ export default function BatchUploadFlow({
   const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
   const [processingIndex, setProcessingIndex] = useState(0);
   const [processingTotal, setProcessingTotal] = useState(0);
-  const [resultUrls, setResultUrls] = useState<Record<string, string>>({});
+  const [processingStatus, setProcessingStatus] = useState("");
   const [exportImage, setExportImage] = useState<{ url: string; name: string } | null>(null);
-  const [roomLock, setRoomLock] = useState<Record<string, unknown> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -128,8 +126,6 @@ export default function BatchUploadFlow({
     setFiles(updated);
     setUploading(false);
     setUploadProgress(100);
-
-    // Move to style selection
     setStep("style");
     setShowStyleModal(true);
   };
@@ -162,10 +158,19 @@ export default function BatchUploadFlow({
     const setId = (setRecord as any)?.id;
     const results: BatchResult[] = [];
     let currentCredits = creditsRemaining;
+    let masterBackgroundPath: string | null = null;
 
     for (let i = 0; i < uploadedFiles.length; i++) {
       setProcessingIndex(i + 1);
       const f = uploadedFiles[i];
+
+      // Update status message
+      if (i === 0) {
+        setProcessingStatus("Creating room environment...");
+      } else {
+        const viewLabel = f.label || `image ${i + 1}`;
+        setProcessingStatus(`Adding ${viewLabel.toLowerCase()}...`);
+      }
 
       try {
         const { data, error } = await supabase.functions.invoke("generate-staging", {
@@ -180,7 +185,8 @@ export default function BatchUploadFlow({
             label: f.label,
             batch_index: i,
             batch_total: uploadedFiles.length,
-            ...(i > 0 && roomLock ? { room_lock: roomLock } : {}),
+            // Pass master background for images 2+
+            ...(i > 0 && masterBackgroundPath ? { master_background_path: masterBackgroundPath } : {}),
           },
         });
 
@@ -197,9 +203,9 @@ export default function BatchUploadFlow({
           currentCredits = data.credits_remaining;
           onCreditsChange(currentCredits);
 
-          // Capture room_lock from first image for batch consistency
-          if (i === 0 && data.room_lock) {
-            setRoomLock(data.room_lock);
+          // Capture master background path from image 1
+          if (i === 0 && data.master_background_path) {
+            masterBackgroundPath = data.master_background_path;
           }
 
           results.push({
@@ -226,7 +232,10 @@ export default function BatchUploadFlow({
     }
 
     setStep("results");
-    toast({ title: `Batch complete`, description: `${results.filter((r) => r.status === "completed").length} of ${uploadedFiles.length} images generated.` });
+    toast({
+      title: "Batch complete",
+      description: `${results.filter((r) => r.status === "completed").length} of ${uploadedFiles.length} images generated.`,
+    });
   };
 
   const handleDownloadAll = async () => {
@@ -247,8 +256,6 @@ export default function BatchUploadFlow({
     }
   };
 
-  const resolutionCredits: Record<string, number> = { "1k": 1, "2k": 2, "4k": 3 };
-
   // === UPLOAD STEP ===
   if (step === "upload") {
     return (
@@ -261,7 +268,6 @@ export default function BatchUploadFlow({
           <Badge variant="outline" className="px-3 py-1">{files.length}/10 images</Badge>
         </div>
 
-        {/* Drop zone */}
         {files.length < 10 && (
           <div
             className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-border p-8 hover:border-accent/50 transition-colors"
@@ -283,7 +289,6 @@ export default function BatchUploadFlow({
           </div>
         )}
 
-        {/* File thumbnails with labels */}
         {files.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
             {files.map((f, i) => (
@@ -309,7 +314,6 @@ export default function BatchUploadFlow({
               </div>
             ))}
 
-            {/* Add more button */}
             {files.length < 10 && (
               <button
                 onClick={() => fileInputRef.current?.click()}
@@ -322,7 +326,6 @@ export default function BatchUploadFlow({
           </div>
         )}
 
-        {/* Label suggestions */}
         {files.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             <span className="text-xs text-muted-foreground mr-1">Quick labels:</span>
@@ -330,7 +333,6 @@ export default function BatchUploadFlow({
               <button
                 key={label}
                 onClick={() => {
-                  // Apply to first unlabelled file
                   const idx = files.findIndex((f) => !f.label);
                   if (idx >= 0) updateLabel(idx, label);
                 }}
@@ -342,7 +344,6 @@ export default function BatchUploadFlow({
           </div>
         )}
 
-        {/* Upload progress */}
         {uploading && (
           <div className="space-y-2">
             <div className="flex justify-between text-sm text-muted-foreground">
@@ -353,7 +354,6 @@ export default function BatchUploadFlow({
           </div>
         )}
 
-        {/* Action buttons */}
         {files.length > 0 && !uploading && (
           <div className="flex items-center justify-between pt-2">
             <div className="flex items-center gap-3">
@@ -370,7 +370,6 @@ export default function BatchUploadFlow({
           </div>
         )}
 
-        {/* Style Selection Modal */}
         <StyleSelectionModal
           open={showStyleModal}
           onClose={() => { setShowStyleModal(false); setStep("upload"); }}
@@ -385,7 +384,7 @@ export default function BatchUploadFlow({
     );
   }
 
-  // === STYLE STEP (modal shown over upload) ===
+  // === STYLE STEP ===
   if (step === "style") {
     return (
       <div className="space-y-6">
@@ -425,6 +424,7 @@ export default function BatchUploadFlow({
         <h2 className="text-xl font-bold text-foreground mb-2">
           Processing {processingIndex} of {processingTotal} images...
         </h2>
+        <p className="text-sm font-medium text-accent mb-1">{processingStatus}</p>
         <p className="text-muted-foreground mb-4">Each image takes 15–30 seconds</p>
         <div className="w-64">
           <Progress value={pct} />
@@ -439,6 +439,11 @@ export default function BatchUploadFlow({
                 ) : r.status === "failed" ? (
                   <AlertCircle className="h-6 w-6 text-destructive" />
                 ) : null}
+              </div>
+              <div className="absolute bottom-0 left-0 right-0 bg-background/70 px-1 py-0.5 text-center">
+                <span className="text-[9px] text-foreground truncate block">
+                  {i === 0 ? "Master" : r.label || `#${i + 1}`}
+                </span>
               </div>
             </div>
           ))}
@@ -488,6 +493,11 @@ export default function BatchUploadFlow({
               {r.status === "completed" && (
                 <div className="absolute top-2 right-2">
                   <CheckCircle className="h-5 w-5 text-green-500 drop-shadow-md" />
+                </div>
+              )}
+              {i === 0 && r.status === "completed" && (
+                <div className="absolute top-2 left-2">
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">Master</Badge>
                 </div>
               )}
             </div>

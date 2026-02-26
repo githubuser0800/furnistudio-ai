@@ -42,6 +42,26 @@ const CAMERA_ANGLE_PROMPTS: Record<string, string> = {
   corner_view: "The camera is positioned at a 45-degree angle showing both the front face and one side of the furniture, creating a dimensional three-quarter view.",
 };
 
+// ── View-specific prompts for batch editing (images 2+) ──
+const VIEW_PROMPTS: Record<string, string> = {
+  "front view": "Place the product facing the camera straight-on, in the centre of the room where the original furniture was. Full front face visible.",
+  "side view": "Place the product showing its 90-degree side profile, positioned to show the full side while the room stays identical.",
+  "back view": "Place the product showing its back, rotated 180 degrees from front, in the same room position.",
+  "close-up": "Zoom in on the product showing detail. The room is visible partially in the background with the same walls, same floor colour, same lighting direction. Use a shallow depth of field.",
+  "fabric detail": "Extreme close-up of the product material and fabric texture. A hint of the same room environment is softly blurred in the background. Same lighting direction and colour temperature.",
+  "top view": "Elevated angle looking directly down at the product. The same room floor is visible around the product, with the same lighting from the same direction.",
+  "corner view": "45-degree three-quarter angle showing both the front and one side of the product. Same room, same position as the original furniture.",
+};
+
+function getViewPrompt(label: string | undefined): string {
+  if (!label) return VIEW_PROMPTS["front view"];
+  const key = label.toLowerCase().trim();
+  for (const [viewKey, prompt] of Object.entries(VIEW_PROMPTS)) {
+    if (key.includes(viewKey) || viewKey.includes(key)) return prompt;
+  }
+  return `Place this product in the room matching the angle described as "${label}". The room stays identical.`;
+}
+
 // ── Template definitions using C.S.S.T. framework (Nano Banana Pro) ──
 interface TemplateConfig {
   mood: string;
@@ -278,8 +298,6 @@ const TEMPLATES: Record<string, TemplateConfig> = {
     atmosphere: "honest warm Cotswolds farmhouse in golden late afternoon",
   },
 
-
-
   // ═══════════ OFFICE ═══════════
   modern_office: {
     mood: "productive, clean, and inspiring",
@@ -375,62 +393,25 @@ const TEMPLATES: Record<string, TemplateConfig> = {
   },
 };
 
-// ── Build room lock text from stored room_lock data ──
-function buildRoomLockPrompt(roomLock: RoomLock, batchIndex: number, batchTotal: number): string {
-  return `BATCH CONSISTENCY: This is image ${batchIndex + 1} of ${batchTotal}. Use IDENTICAL room environment as image 1: ${roomLock.room_template} room, ${roomLock.wall_color}, ${roomLock.floor} ${roomLock.floor_direction}, ${roomLock.light_source} ${roomLock.light_direction} casting ${roomLock.light_quality}, shadows falling ${roomLock.shadow_direction}, props in exact positions: ${roomLock.props.join(", ")}, with ${roomLock.atmosphere} atmosphere. Only the furniture product changes.`;
-}
-
-// ── Batch consistency prefix ──
-function buildBatchConsistencyPrefix(
-  batchInfo: { index: number; total: number; label?: string } | null,
-  config: TemplateConfig | null,
-  roomLock: RoomLock | null
-): string {
-  if (!batchInfo || batchInfo.total <= 1) return "";
-
-  // For image 2+ with a stored room_lock, use that for exact matching
-  if (batchInfo.index > 0 && roomLock) {
-    const labelHint = batchInfo.label?.toLowerCase() || "";
-    const isCloseUp = labelHint.includes("close") || labelHint.includes("detail") || labelHint.includes("fabric") || labelHint.includes("texture");
-
-    let prefix = buildRoomLockPrompt(roomLock, batchInfo.index, batchInfo.total);
-
-    if (isCloseUp) {
-      prefix += `\n\nThis is a close-up detail shot. Show partial room environment with the same ${roomLock.floor} visible at edges, same ${roomLock.light_source} direction creating consistent lighting, same ${roomLock.atmosphere} atmosphere. Background softly out of focus but clearly recognisable as the same room.`;
-    }
-
-    return prefix + "\n\n";
-  }
-
-  // For image 1, establish the room
-  if (config) {
-    return `BATCH CONSISTENCY REQUIREMENT: This is image 1 of ${batchInfo.total} in a product set. ALL images in this set must appear as if photographed in the EXACT SAME ROOM during the SAME photoshoot session. This is the HERO image that establishes the room environment precisely.
-
-Maintain identical room layout, architecture, wall colours, flooring, lighting setup, light direction, shadow angles, colour temperature, mood, background props in same positions, and time of day atmosphere across the entire set. The ONLY difference between images should be the furniture product itself.
-
-`;
-  }
-
-  return "";
-}
-
-// ── Build a full C.S.S.T. prompt (Nano Banana Pro framework) ──
+// ── Build a full C.S.S.T. prompt for IMAGE 1 (master generation) ──
 function buildTemplatePrompt(
   config: TemplateConfig,
   aspectRatio: string,
   resolution: string,
   cameraAngle: string | null,
-  batchInfo: { index: number; total: number; label?: string } | null = null,
-  roomLock: RoomLock | null = null
+  batchTotal: number = 1
 ): string {
   const angleInstruction = cameraAngle && CAMERA_ANGLE_PROMPTS[cameraAngle]
     ? CAMERA_ANGLE_PROMPTS[cameraAngle]
     : "The camera is positioned at eye level, looking straight on at the furniture piece.";
 
-  const batchPrefix = buildBatchConsistencyPrefix(batchInfo, config, roomLock);
   const imperfections = pickImperfections(2);
 
-  return `${batchPrefix}[CONTEXT]: This is a premium furniture e-commerce photograph for a UK retailer website. The tone is ${config.mood}. Think of it as ${config.contextAnchor}.
+  const batchNote = batchTotal > 1
+    ? `\n\nBATCH MASTER: This is image 1 of ${batchTotal}. This generated room will be used as the MASTER BACKGROUND for all subsequent images. Make the room environment detailed, complete, and consistent so it can be reused.\n\n`
+    : "";
+
+  return `${batchNote}[CONTEXT]: This is a premium furniture e-commerce photograph for a UK retailer website. The tone is ${config.mood}. Think of it as ${config.contextAnchor}.
 
 [SUBJECT & LOGIC]: Place this exact furniture piece naturally in ${config.roomDescription}. The furniture sits on ${config.flooring} ${config.flooringDirection}. ${config.wallDescription}. ${config.lightSource} ${config.lightDirection} casts ${config.lightQuality} across the scene. ${config.shadowDirection}. Include ${config.propsPositioned}. The furniture appears grounded with realistic contact shadows where the base meets the floor, showing subtle compression and contact points. ${config.materialBehavior}. Scale is accurate for a real interior space. ${angleInstruction}
 
@@ -442,29 +423,75 @@ function buildTemplatePrompt(
 [RESOLUTION]: ${resolution || "1k"}.`;
 }
 
-// ── Build a C.S.S.T. prompt from a custom user description ──
+// ── Build a C.S.S.T. prompt from a custom user description (image 1 only) ──
 function buildCustomPrompt(
   userInput: string,
   aspectRatio: string,
   resolution: string,
   cameraAngle: string | null,
-  batchInfo: { index: number; total: number; label?: string } | null = null,
-  roomLock: RoomLock | null = null
+  batchTotal: number = 1
 ): string {
   const angleInstruction = cameraAngle && CAMERA_ANGLE_PROMPTS[cameraAngle]
     ? CAMERA_ANGLE_PROMPTS[cameraAngle]
     : "";
 
-  const batchPrefix = buildBatchConsistencyPrefix(batchInfo, null, roomLock);
   const imperfections = pickImperfections(2);
 
-  return `${batchPrefix}[CONTEXT]: This is a premium furniture e-commerce photograph for a UK retailer website. The tone is aspirational and lifestyle-focused. Think of it as a hero image from a premium furniture retailer catalogue.
+  const batchNote = batchTotal > 1
+    ? `\n\nBATCH MASTER: This is image 1 of ${batchTotal}. This generated room will be used as the MASTER BACKGROUND for all subsequent images. Make the room environment detailed, complete, and consistent so it can be reused.\n\n`
+    : "";
+
+  return `${batchNote}[CONTEXT]: This is a premium furniture e-commerce photograph for a UK retailer website. The tone is aspirational and lifestyle-focused. Think of it as a hero image from a premium furniture retailer catalogue.
 
 [SUBJECT & LOGIC]: Place this exact furniture piece naturally in ${userInput}. The furniture appears grounded with realistic contact shadows where the base meets the floor. Shadows fall correctly based on visible light sources in the scene. Scale is accurate for a real interior space. ${angleInstruction}
 
 [STYLE]: Photorealistic commercial interior photography. Natural lighting that accurately represents furniture materials with realistic surface interactions. Reference: high-end British furniture retail photography.
 
 [TECHNICAL FLAVOR]: Shot with a 35mm lens at f/4. ${imperfections[0]}. ${imperfections[1]}.
+
+[ASPECT RATIO]: ${aspectRatio || "1:1"}.
+[RESOLUTION]: ${resolution || "1k"}.`;
+}
+
+// ── Build editing prompt for images 2+ (compositing product into master background) ──
+function buildEditingPrompt(
+  label: string | undefined,
+  batchIndex: number,
+  batchTotal: number,
+  aspectRatio: string,
+  resolution: string
+): string {
+  const viewInstruction = getViewPrompt(label);
+  const imperfections = pickImperfections(2);
+
+  return `EDITING TASK: You have two reference images.
+
+IMAGE 1 (MASTER BACKGROUND): This is the room environment to PRESERVE EXACTLY. Keep the identical:
+- Room layout, walls, floor - every architectural element stays unchanged
+- Lighting direction and quality - same light sources, same colour temperature
+- All props in their exact same positions - nothing moves, nothing added, nothing removed
+- Color temperature and atmosphere - the mood is identical
+- Every detail of this room stays pixel-perfect unchanged
+
+IMAGE 2 (PRODUCT REFERENCE): This is the furniture product to place INTO the room.
+- Use this as the EXACT product reference
+- Match this product's shape, materials, colors, textures, and design details precisely
+- This shows the ${label || "front"} view of the product
+
+TASK: Replace the furniture in Image 1 with the product from Image 2.
+- Keep the ENTIRE room from Image 1 unchanged - walls, floor, lighting, props, atmosphere
+- Only swap the furniture piece
+- ${viewInstruction}
+- Adjust furniture position naturally for the new angle
+- Shadows and reflections update to match the new furniture position and the existing light sources
+- Contact shadows where the furniture meets the floor must match the room's lighting direction
+- Everything else stays IDENTICAL to Image 1
+
+This is image ${batchIndex + 1} of ${batchTotal} in a product photography set. All images must look like they were shot in the exact same room during the same photoshoot session.
+
+${PRODUCT_PRESERVATION}
+
+[TECHNICAL FLAVOR]: ${imperfections[0]}. ${imperfections[1]}.
 
 [ASPECT RATIO]: ${aspectRatio || "1:1"}.
 [RESOLUTION]: ${resolution || "1k"}.`;
@@ -502,23 +529,36 @@ serve(async (req) => {
     } = await supabaseUser.auth.getUser();
     if (authErr || !user) throw new Error("Unauthorized");
 
-    const { image_id, template_id, resolution, custom_prompt, aspect_ratio, camera_angle, set_id, label, batch_index, batch_total, room_lock } = await req.json();
+    const {
+      image_id,
+      template_id,
+      resolution,
+      custom_prompt,
+      aspect_ratio,
+      camera_angle,
+      set_id,
+      label,
+      batch_index,
+      batch_total,
+      master_background_path, // NEW: storage path of the master background image
+    } = await req.json();
 
-    // Build batch info if present
-    const batchInfo = typeof batch_index === "number" && typeof batch_total === "number" && batch_total > 1
-      ? { index: batch_index, total: batch_total, label: label || undefined }
-      : null;
+    const isBatch = typeof batch_index === "number" && typeof batch_total === "number" && batch_total > 1;
+    const isFirstInBatch = isBatch && batch_index === 0;
+    const isSubsequentInBatch = isBatch && batch_index > 0;
 
-    // Get room_lock for batch images 2+
-    const roomLockData: RoomLock | null = room_lock || null;
-
-    // Build prompt using C.S.S.T. framework (Nano Banana Pro)
-    let prompt: string;
     const templateConfig = TEMPLATES[template_id];
-    if (template_id === "custom" && custom_prompt) {
-      prompt = buildCustomPrompt(custom_prompt, aspect_ratio, resolution, camera_angle, batchInfo, roomLockData);
+
+    // ── Build prompt ──
+    let prompt: string;
+
+    if (isSubsequentInBatch && master_background_path) {
+      // Images 2+: editing prompt (compositing product into master)
+      prompt = buildEditingPrompt(label, batch_index, batch_total, aspect_ratio, resolution);
+    } else if (template_id === "custom" && custom_prompt) {
+      prompt = buildCustomPrompt(custom_prompt, aspect_ratio, resolution, camera_angle, isBatch ? batch_total : 1);
     } else if (templateConfig) {
-      prompt = buildTemplatePrompt(templateConfig, aspect_ratio, resolution, camera_angle, batchInfo, roomLockData);
+      prompt = buildTemplatePrompt(templateConfig, aspect_ratio, resolution, camera_angle, isBatch ? batch_total : 1);
     } else {
       throw new Error("Invalid template");
     }
@@ -545,7 +585,7 @@ serve(async (req) => {
       );
     }
 
-    // Get image record
+    // Get product image record
     const { data: imageRecord } = await supabaseAdmin
       .from("images")
       .select("*")
@@ -574,7 +614,7 @@ serve(async (req) => {
 
     if (jobErr || !job) throw new Error("Failed to create job");
 
-    // Download original image from storage
+    // Download product image from storage
     const { data: fileData, error: dlErr } = await supabaseAdmin.storage
       .from("furniture-images")
       .download(imageRecord.original_url);
@@ -585,21 +625,92 @@ serve(async (req) => {
     }
 
     const imageBytes = new Uint8Array(await fileData.arrayBuffer());
-    const base64Image = base64Encode(imageBytes);
+    const base64Product = base64Encode(imageBytes);
+    const productMimeType = imageRecord.filename?.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
 
-    // Determine MIME type from filename
-    const mimeType = imageRecord.filename?.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
+    // ── Download master background for images 2+ ──
+    let base64Master: string | null = null;
+    let masterMimeType = "image/png";
+    if (isSubsequentInBatch && master_background_path) {
+      console.log("Downloading master background:", master_background_path);
+      const { data: masterData, error: masterErr } = await supabaseAdmin.storage
+        .from("furniture-images")
+        .download(master_background_path);
+
+      if (masterErr || !masterData) {
+        await supabaseAdmin.from("jobs").update({ status: "failed" }).eq("id", job.id);
+        throw new Error("Failed to download master background image");
+      }
+
+      const masterBytes = new Uint8Array(await masterData.arrayBuffer());
+      base64Master = base64Encode(masterBytes);
+      masterMimeType = master_background_path.endsWith(".png") ? "image/png" : "image/jpeg";
+    }
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("AI service not configured");
 
-    console.log("Calling AI gateway with template:", template_id, "| Batch:", batchInfo ? `${batchInfo.index + 1}/${batchInfo.total}` : "single", "| Prompt length:", prompt.length);
+    console.log(
+      "Calling AI gateway |",
+      isSubsequentInBatch ? `EDIT into master (${batch_index + 1}/${batch_total})` : isFirstInBatch ? `MASTER generation (1/${batch_total})` : "single",
+      "| template:", template_id,
+      "| prompt length:", prompt.length
+    );
 
-    // ── API CALL STRUCTURE (Nano Banana Pro) ──
-    // 1. Text: Product preservation instruction FIRST
-    // 2. Image: Furniture image as base64 reference
-    // 3. Text: Full C.S.S.T. prompt describing the room/scene
-    // Temperature: 0.3 (lower = more faithful to reference)
+    // ── Build API message content ──
+    let messageContent: Array<Record<string, unknown>>;
+
+    if (isSubsequentInBatch && base64Master) {
+      // ═══ IMAGES 2+: Two images (master + product) with editing prompt ═══
+      messageContent = [
+        // Editing instruction
+        {
+          type: "text",
+          text: "EDITING TASK: Image 1 is the MASTER BACKGROUND room to preserve exactly. Image 2 is the PRODUCT to place into it. Keep the room pixel-perfect identical. Only replace the furniture.",
+        },
+        // IMAGE 1: Master background
+        {
+          type: "image_url",
+          image_url: {
+            url: `data:${masterMimeType};base64,${base64Master}`,
+          },
+        },
+        // IMAGE 2: Product reference
+        {
+          type: "image_url",
+          image_url: {
+            url: `data:${productMimeType};base64,${base64Product}`,
+          },
+        },
+        // Full editing prompt with view-specific instructions
+        {
+          type: "text",
+          text: prompt,
+        },
+      ];
+    } else {
+      // ═══ IMAGE 1 or SINGLE: Standard generation ═══
+      messageContent = [
+        // STEP 1: Preservation instruction FIRST
+        {
+          type: "text",
+          text: `${PRODUCT_PRESERVATION}\n\nCRITICAL: Preserve this EXACT furniture product unchanged. Only place it in a new environment.`,
+        },
+        // STEP 2: The furniture image as PRIMARY reference
+        {
+          type: "image_url",
+          image_url: {
+            url: `data:${productMimeType};base64,${base64Product}`,
+          },
+        },
+        // STEP 3: The full C.S.S.T. room/scene prompt
+        {
+          type: "text",
+          text: prompt,
+        },
+      ];
+    }
+
     const aiResponse = await fetch(
       "https://ai.gateway.lovable.dev/v1/chat/completions",
       {
@@ -613,25 +724,7 @@ serve(async (req) => {
           messages: [
             {
               role: "user",
-              content: [
-                // STEP 1: Preservation instruction FIRST
-                {
-                  type: "text",
-                  text: `${PRODUCT_PRESERVATION}\n\nCRITICAL: Preserve this EXACT furniture product unchanged. Only place it in a new environment.`,
-                },
-                // STEP 2: The furniture image as PRIMARY reference
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: `data:${mimeType};base64,${base64Image}`,
-                  },
-                },
-                // STEP 3: The full C.S.S.T. room/scene prompt
-                {
-                  type: "text",
-                  text: prompt,
-                },
-              ],
+              content: messageContent,
             },
           ],
           modalities: ["image", "text"],
@@ -749,29 +842,31 @@ serve(async (req) => {
       .from("furniture-images")
       .createSignedUrl(outputPath, 3600);
 
-    // Build room_lock for first batch image so client can pass it to subsequent calls
-    let generatedRoomLock: RoomLock | null = null;
-    if (batchInfo && batchInfo.index === 0 && templateConfig) {
-      generatedRoomLock = extractRoomLock(template_id, templateConfig);
+    // For image 1 in batch, return the output storage path so client can pass it for subsequent images
+    const masterPath = isFirstInBatch ? outputPath : undefined;
 
-      // Store room_lock in product_sets if set_id provided
-      if (set_id) {
-        await supabaseAdmin
-          .from("product_sets")
-          .update({ room_lock: generatedRoomLock } as any)
-          .eq("id", set_id);
-      }
+    // Store master background path in product_sets if applicable
+    if (isFirstInBatch && set_id) {
+      const roomLock = templateConfig ? extractRoomLock(template_id, templateConfig) : null;
+      await supabaseAdmin
+        .from("product_sets")
+        .update({ room_lock: { ...roomLock, master_background_path: outputPath } as any })
+        .eq("id", set_id);
     }
 
-    console.log("Generation complete. Job:", job.id, batchInfo ? `(batch ${batchInfo.index + 1}/${batchInfo.total})` : "");
+    console.log(
+      "Generation complete. Job:", job.id,
+      isFirstInBatch ? `(MASTER - batch 1/${batch_total})` : isBatch ? `(EDIT - batch ${batch_index + 1}/${batch_total})` : ""
+    );
 
     return new Response(
       JSON.stringify({
         success: true,
         job_id: job.id,
         output_url: signedUrl?.signedUrl || null,
+        output_path: outputPath, // storage path for master background reuse
         credits_remaining: profile.credits_remaining - creditsNeeded,
-        room_lock: generatedRoomLock,
+        master_background_path: masterPath || null,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
