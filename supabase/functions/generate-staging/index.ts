@@ -8,54 +8,266 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const PROMPT_SUFFIX =
-  "Photorealistic commercial photography. Natural lighting with realistic shadows matching light source direction. Furniture appears grounded with contact shadows. High resolution, professional e-commerce quality.";
+// ── Product Preservation Prefix (prepended to EVERY prompt) ──
+const PRODUCT_PRESERVATION = `Using the uploaded furniture image as the PRIMARY REFERENCE that must be preserved EXACTLY. Maintain the exact shape, proportions, materials, textures, colors, and all design details. Only change the background environment.
 
-const TEMPLATES: Record<string, string> = {
-  // LIVING ROOM
-  scandinavian:
-    `Place this furniture piece in a modern Scandinavian living room. Light oak hardwood flooring, white walls, floor-to-ceiling windows casting soft natural daylight. Minimal decor: a wool throw, monstera plant, simple side table. Neutral palette with whites, light woods, soft grays. Shot with 35mm lens at f/4. ${PROMPT_SUFFIX}`,
-  contemporary_grey:
-    `Place this furniture piece in a contemporary living room with warm grey walls. Soft afternoon light filtering through sheer curtains. Textured area rug on the floor, minimalist abstract art on the wall. Warm neutral tones with gentle shadow play. Shot with 50mm lens at f/4. ${PROMPT_SUFFIX}`,
-  cozy_british:
-    `Place this furniture piece in a classic British drawing room. Traditional fireplace with gilt mirror, Persian rug over dark oak parquet. Tall sash windows with floor-length velvet curtains. Leather-bound books, silver tea service, fresh flowers in crystal vase. Rich greens, burgundies, brass accents. Shot with 50mm lens at f/4. ${PROMPT_SUFFIX}`,
-  luxury_penthouse:
-    `Place this furniture piece in a luxury penthouse apartment. Floor-to-ceiling windows with city skyline view, polished marble floors with subtle reflections. Golden hour light streaming in. Designer accents, sculptural lighting. Palette of warm golds, cool marble whites, deep charcoals. Shot with 24mm lens at f/5.6. ${PROMPT_SUFFIX}`,
-  minimalist_white:
-    `Place this furniture piece in a pure minimalist interior. White walls, light concrete floor, stark directional light from a single large window. Almost no decor—clean lines, negative space. The furniture is the sole focal point. Monochromatic whites and grays. Shot with 35mm lens at f/8. ${PROMPT_SUFFIX}`,
+QUALITY NON-NEGOTIABLES:
+- Furniture product is identical to uploaded image
+- No extra legs, arms, or altered proportions
+- Materials look the same (not changed from fabric to leather, etc.)
+- Colors match the original
+- Furniture is properly grounded (not floating)
+- Shadows are physically accurate
+- Scale is realistic for the room`;
 
-  // BEDROOM
-  serene_bedroom:
-    `Place this furniture piece in a serene bedroom setting. Soft white walls, plush cream carpet, gentle morning light filtering through linen curtains. Layered white bedding, soft textiles. Calm, airy atmosphere with muted pastel accents. Shot with 50mm lens at f/2.8. ${PROMPT_SUFFIX}`,
-  boutique_hotel:
-    `Place this furniture piece in a boutique hotel room. Dark forest green walls, brass pendant light casting warm pools of light. Velvet cushions, moody atmospheric lighting. Rich jewel tones with gold accents. Evening ambiance. Shot with 35mm lens at f/2.8. ${PROMPT_SUFFIX}`,
-  light_airy:
-    `Place this furniture piece in a light and airy bedroom. White shiplap walls, bleached oak floor, abundant natural light from multiple windows. Rattan accents, trailing plants, linen textiles. Coastal-inspired fresh palette. Shot with 35mm lens at f/4. ${PROMPT_SUFFIX}`,
+// ── Technical Flavor (appended to every prompt) ──
+const TECHNICAL_FLAVOR = `[TECHNICAL FLAVOR]: Subtle depth of field with background slightly soft. Natural material textures clearly rendered. Gentle photographic grain visible at full resolution.`;
 
-  // DINING
-  modern_dining:
-    `Place this furniture piece in a modern dining space. Statement pendant light above, dark oak flooring. Table set with white tableware and linen napkins. Large windows with garden view. Warm natural tones. Shot with 24mm lens at f/5.6. ${PROMPT_SUFFIX}`,
-  rustic_farmhouse:
-    `Place this furniture piece in a rustic farmhouse dining room. Exposed ceiling beams, whitewashed walls, reclaimed wood floor. Vintage pendant lights, linen table runner, ceramic pitcher with wildflowers. Warm earthy palette. Shot with 35mm lens at f/4. ${PROMPT_SUFFIX}`,
-
-  // OFFICE
-  modern_office:
-    `Place this furniture piece in a modern home office. Clean white walls, large window with city or garden view. Minimal desk setup, built-in shelving with books and plants. Bright, focused atmosphere. Shot with 35mm lens at f/5.6. ${PROMPT_SUFFIX}`,
-  creative_studio:
-    `Place this furniture piece in a creative studio space. White brick walls, polished concrete floor, large industrial windows. Mood boards on the wall, trailing plants, warm task lighting. Inspiring creative atmosphere. Shot with 24mm lens at f/4. ${PROMPT_SUFFIX}`,
-
-  // STUDIO / PRODUCT
-  white_background:
-    `Place this furniture piece on a pure white background (RGB 255,255,255). Even, shadowless studio lighting from all angles. The product fills 85% of the frame, perfectly centered. Clean e-commerce product photography, no environment, no shadows, no floor visible. Shot with 85mm lens at f/11. ${PROMPT_SUFFIX}`,
-  grey_studio:
-    `Place this furniture piece on a seamless medium grey studio background. Professional three-point lighting setup: key light from upper left, fill light from right, backlight for rim separation. Subtle ground shadow. Clean commercial product photography. Shot with 85mm lens at f/8. ${PROMPT_SUFFIX}`,
-  showroom_floor:
-    `Place this furniture piece on a polished concrete showroom floor. Track lighting from above creating defined highlights. Other furniture pieces visible but tastefully blurred in the background. Professional furniture showroom atmosphere. Shot with 50mm lens at f/2.8 for shallow depth of field. ${PROMPT_SUFFIX}`,
+// ── Camera Angle Prompts ──
+const CAMERA_ANGLE_PROMPTS: Record<string, string> = {
+  standard: "Camera at eye level, straight-on view of the furniture.",
+  elevated: "Camera positioned slightly above at 30-degree downward angle, showing top surface and front.",
+  low_angle: "Camera low to ground, angled upward, making furniture appear grand and substantial.",
+  side_profile: "Camera at 90-degree side angle, showing furniture profile silhouette.",
+  corner_view: "Camera at 45-degree angle showing front and side, three-quarter view.",
 };
 
-// Custom prompt builder
-function buildCustomPrompt(userInput: string): string {
-  return `Place this furniture in ${userInput}. Photorealistic interior photography with natural lighting and realistic shadows. Professional e-commerce quality. ${PROMPT_SUFFIX}`;
+// ── Template definitions using C.S.S.T. framework ──
+interface TemplateConfig {
+  mood: string;
+  contextAnchor: string;
+  roomDescription: string;
+  flooring: string;
+  lightSource: string;
+  shadowDirection: string;
+  propsDecor: string;
+  lightingDescription: string;
+  styleReference: string;
+}
+
+const TEMPLATES: Record<string, TemplateConfig> = {
+  // LIVING ROOM
+  scandinavian: {
+    mood: "calm, clean, and effortlessly modern",
+    contextAnchor: "a Scandinavian Design Centre catalogue shot",
+    roomDescription: "a modern Scandinavian living room with floor-to-ceiling windows casting soft natural daylight, white walls, and minimal decor",
+    flooring: "light oak hardwood flooring",
+    lightSource: "Soft natural daylight from large windows",
+    shadowDirection: "gentle diffused shadows falling to the right",
+    propsDecor: "a wool throw draped nearby, a monstera plant in a ceramic pot, and a simple oak side table",
+    lightingDescription: "Soft, even natural daylight flooding through sheer curtains. No harsh shadows",
+    styleReference: "Kinfolk magazine interior photography, shot with 35mm lens at f/4",
+  },
+  contemporary_grey: {
+    mood: "warm, sophisticated, and inviting",
+    contextAnchor: "a Habitat or Made.com lifestyle shoot",
+    roomDescription: "a contemporary living room with warm grey walls and soft afternoon light filtering through sheer curtains",
+    flooring: "a textured wool area rug over grey-toned engineered wood",
+    lightSource: "Warm afternoon sun filtering through sheer curtains",
+    shadowDirection: "soft warm shadows falling to the left",
+    propsDecor: "minimalist abstract art on the wall, a ceramic vase with dried pampas grass, and stacked coffee table books",
+    lightingDescription: "Warm, golden-hour afternoon light with gentle shadow play",
+    styleReference: "Elle Decoration UK editorial, shot with 50mm lens at f/4",
+  },
+  cozy_british: {
+    mood: "rich, traditional, and quintessentially British",
+    contextAnchor: "a Country Life or Homes & Gardens magazine feature",
+    roomDescription: "a classic British drawing room with a traditional fireplace, gilt mirror above, and tall sash windows with floor-length velvet curtains",
+    flooring: "dark oak parquet with a Persian rug",
+    lightSource: "Soft natural light from tall sash windows mixed with warm firelight glow",
+    shadowDirection: "warm layered shadows with firelight creating depth",
+    propsDecor: "leather-bound books on shelves, a silver tea service on a side table, fresh flowers in a crystal vase, and velvet cushions",
+    lightingDescription: "Rich, warm interior light mixing window daylight with ambient fireplace glow",
+    styleReference: "Country Life magazine interiors, shot with 50mm lens at f/4",
+  },
+  luxury_penthouse: {
+    mood: "glamorous, aspirational, and urban-luxe",
+    contextAnchor: "a Robb Report or Architectural Digest penthouse feature",
+    roomDescription: "a luxury penthouse apartment with floor-to-ceiling windows revealing a city skyline at golden hour",
+    flooring: "polished Italian marble with subtle veining and gentle reflections",
+    lightSource: "Golden hour sunlight streaming through panoramic windows",
+    shadowDirection: "long dramatic golden shadows stretching across the marble floor",
+    propsDecor: "sculptural designer lighting, a curated art piece, and a champagne-toned accent table",
+    lightingDescription: "Dramatic golden-hour light with rich warm tones and defined highlights on marble surfaces",
+    styleReference: "Architectural Digest luxury editorial, shot with 24mm lens at f/5.6",
+  },
+  minimalist_white: {
+    mood: "pure, stark, and gallery-like",
+    contextAnchor: "a Vitsoe or Vitra minimalist showroom photograph",
+    roomDescription: "a pure minimalist interior with white walls and stark directional light from a single large window. Almost no decor—the furniture is the sole focal point",
+    flooring: "light polished concrete",
+    lightSource: "Single directional light from one large window",
+    shadowDirection: "clean defined shadows falling sharply to one side",
+    propsDecor: "virtually nothing—pure negative space with perhaps a single geometric object",
+    lightingDescription: "Stark, clean directional light creating bold contrast between light and shadow",
+    styleReference: "Cereal magazine minimalism, shot with 35mm lens at f/8",
+  },
+
+  // BEDROOM
+  serene_bedroom: {
+    mood: "peaceful, soft, and sanctuary-like",
+    contextAnchor: "a The White Company or Loaf bedroom catalogue",
+    roomDescription: "a serene bedroom with soft white walls, gentle morning light filtering through linen curtains, and layered white bedding",
+    flooring: "plush cream carpet",
+    lightSource: "Gentle morning sunlight filtering through linen curtains",
+    shadowDirection: "very soft diffused shadows with minimal contrast",
+    propsDecor: "layered white and cream textiles, a ceramic bedside lamp, and a small vase of dried eucalyptus",
+    lightingDescription: "Soft, dreamy morning light with a warm glow. Ethereal and calming atmosphere",
+    styleReference: "The White Company brand photography, shot with 50mm lens at f/2.8",
+  },
+  boutique_hotel: {
+    mood: "moody, luxurious, and intimate",
+    contextAnchor: "a boutique hotel feature in Condé Nast Traveller",
+    roomDescription: "a boutique hotel room with dark forest green walls, brass pendant lights casting warm pools of light, and velvet cushions",
+    flooring: "dark herringbone timber with a plush area rug",
+    lightSource: "Warm brass pendant lights and subtle ambient uplighting",
+    shadowDirection: "dramatic pools of warm light with deep atmospheric shadows",
+    propsDecor: "velvet cushions in jewel tones, a brass-framed mirror, a stack of art books, and a cashmere throw",
+    lightingDescription: "Moody, warm atmospheric lighting with brass-toned highlights. Evening ambiance",
+    styleReference: "Condé Nast Traveller hotel interiors, shot with 35mm lens at f/2.8",
+  },
+  light_airy: {
+    mood: "fresh, coastal, and relaxed",
+    contextAnchor: "a Neptune or seaside cottage feature in Living Etc",
+    roomDescription: "a light and airy bedroom with white shiplap walls, abundant natural light from multiple windows, and rattan accents",
+    flooring: "bleached oak floorboards",
+    lightSource: "Bright natural daylight from multiple windows",
+    shadowDirection: "light, airy shadows with high-key brightness throughout",
+    propsDecor: "rattan baskets, trailing pothos plants, linen textiles in natural tones, and a driftwood accent",
+    lightingDescription: "Bright, high-key natural light creating a fresh, sun-washed coastal feel",
+    styleReference: "Living Etc coastal interiors, shot with 35mm lens at f/4",
+  },
+
+  // DINING
+  modern_dining: {
+    mood: "sociable, warm, and contemporary",
+    contextAnchor: "a Heal's or Habitat dining collection campaign",
+    roomDescription: "a modern dining space with a statement pendant light above, large windows with a garden view",
+    flooring: "dark oak engineered wood",
+    lightSource: "Statement pendant light above plus natural window light from the side",
+    shadowDirection: "defined downward shadows from pendant with softer side-fill from windows",
+    propsDecor: "white tableware set for dinner, linen napkins, a ceramic jug with fresh greenery, and simple dining chairs",
+    lightingDescription: "Warm pendant glow combined with cool natural window light creating dimensional lighting",
+    styleReference: "Heal's lifestyle campaign, shot with 24mm lens at f/5.6",
+  },
+  rustic_farmhouse: {
+    mood: "honest, warm, and countryside charm",
+    contextAnchor: "a feature in Country Homes & Interiors magazine",
+    roomDescription: "a rustic farmhouse dining room with exposed ceiling beams, whitewashed walls, and vintage character",
+    flooring: "reclaimed wide-plank timber",
+    lightSource: "Warm natural light from a farmhouse window plus vintage pendant lights",
+    shadowDirection: "warm, textured shadows with beam patterns on the table",
+    propsDecor: "a linen table runner, a ceramic pitcher with wildflowers, mismatched vintage chairs, and a bread board with artisan loaf",
+    lightingDescription: "Warm, rustic lighting mixing natural window light with vintage pendant glow",
+    styleReference: "Country Homes & Interiors editorial, shot with 35mm lens at f/4",
+  },
+
+  // OFFICE
+  modern_office: {
+    mood: "productive, clean, and inspiring",
+    contextAnchor: "a John Lewis home office collection shoot",
+    roomDescription: "a modern home office with clean white walls, a large window with city or garden view, and built-in shelving",
+    flooring: "light timber or clean carpet",
+    lightSource: "Bright natural daylight from a large desk-side window",
+    shadowDirection: "clean shadows from window light falling across the desk area",
+    propsDecor: "neatly arranged books, a small potted plant, a designer desk lamp, and minimal desk accessories",
+    lightingDescription: "Bright, focused natural daylight ideal for a productive workspace",
+    styleReference: "John Lewis Home campaign photography, shot with 35mm lens at f/5.6",
+  },
+  creative_studio: {
+    mood: "inspiring, artistic, and industrially chic",
+    contextAnchor: "a creative workspace feature in Dezeen or Monocle",
+    roomDescription: "a creative studio space with white brick walls, large industrial windows, and an inspiring artistic atmosphere",
+    flooring: "polished concrete",
+    lightSource: "Large industrial windows letting in abundant natural light",
+    shadowDirection: "industrial window-frame shadow patterns with bright even fill",
+    propsDecor: "mood boards pinned to the wall, trailing plants from shelves, warm task lighting, and art supplies",
+    lightingDescription: "Bright, even industrial light with warm task-light accents",
+    styleReference: "Monocle workspace editorial, shot with 24mm lens at f/4",
+  },
+
+  // STUDIO / PRODUCT
+  white_background: {
+    mood: "clean, professional, and product-focused",
+    contextAnchor: "a pure e-commerce product shot for a premium retailer website",
+    roomDescription: "a pure white background (RGB 255,255,255) with even, shadowless studio lighting from all angles. The product fills 85% of the frame, perfectly centered. No environment, no floor visible",
+    flooring: "seamless white infinity curve",
+    lightSource: "Even multi-point studio lighting eliminating all shadows",
+    shadowDirection: "no shadows—completely even illumination",
+    propsDecor: "absolutely nothing—pure white background only",
+    lightingDescription: "Professional multi-point studio lighting for zero-shadow product photography",
+    styleReference: "Premium e-commerce product photography, shot with 85mm lens at f/11",
+  },
+  grey_studio: {
+    mood: "professional, refined, and studio-quality",
+    contextAnchor: "a professional furniture product photograph for a premium catalogue",
+    roomDescription: "a seamless medium grey studio background with professional three-point lighting: key light from upper left, fill light from right, backlight for rim separation",
+    flooring: "seamless grey studio backdrop sweeping to floor",
+    lightSource: "Professional three-point lighting setup",
+    shadowDirection: "defined key shadow to the right with fill-softened edges and rim highlight behind",
+    propsDecor: "nothing—clean studio environment",
+    lightingDescription: "Professional three-point studio lighting with key, fill, and backlight for dimensional product photography",
+    styleReference: "High-end furniture catalogue product shot, shot with 85mm lens at f/8",
+  },
+  showroom_floor: {
+    mood: "contextual, premium, and showroom-realistic",
+    contextAnchor: "an in-situ showroom shot for a furniture retailer like Ligne Roset or B&B Italia",
+    roomDescription: "a polished concrete showroom floor with track lighting from above. Other furniture pieces visible but tastefully blurred in the background",
+    flooring: "polished concrete showroom floor with subtle reflections",
+    lightSource: "Professional track lighting from above creating defined highlights",
+    shadowDirection: "defined downward shadows from track spots with gentle floor reflections",
+    propsDecor: "blurred companion furniture pieces in the background suggesting a curated showroom",
+    lightingDescription: "Professional showroom track lighting creating focused highlights and dimensional shadows",
+    styleReference: "Premium furniture showroom photography, shot with 50mm lens at f/2.8 for shallow depth of field",
+  },
+};
+
+// ── Build a full C.S.S.T. prompt from a template config ──
+function buildTemplatePrompt(
+  config: TemplateConfig,
+  aspectRatio: string,
+  resolution: string,
+  cameraAngle: string | null
+): string {
+  const angleInstruction = cameraAngle && CAMERA_ANGLE_PROMPTS[cameraAngle]
+    ? ` ${CAMERA_ANGLE_PROMPTS[cameraAngle]}`
+    : " Camera at eye level, straight-on view of the furniture.";
+
+  return `${PRODUCT_PRESERVATION}
+
+[CONTEXT]: This image is for premium UK furniture e-commerce. The tone is ${config.mood}. Think of it as ${config.contextAnchor}.
+
+[SUBJECT & LOGIC]: Place this exact furniture piece naturally in ${config.roomDescription}. The furniture sits on ${config.flooring}. ${config.lightSource} casts ${config.shadowDirection}. Include ${config.propsDecor}. The furniture appears grounded with realistic contact shadows where it meets the floor. Scale is accurate for a real interior.${angleInstruction}
+
+[STYLE]: Photorealistic commercial interior photography. ${config.lightingDescription}. Reference: ${config.styleReference}.
+
+${TECHNICAL_FLAVOR}
+
+[OUTPUT]: ${aspectRatio || "1:1"}. ${resolution || "1k"} resolution.`;
+}
+
+// ── Build a C.S.S.T. prompt from a custom user description ──
+function buildCustomPrompt(
+  userInput: string,
+  aspectRatio: string,
+  resolution: string,
+  cameraAngle: string | null
+): string {
+  const angleInstruction = cameraAngle && CAMERA_ANGLE_PROMPTS[cameraAngle]
+    ? ` ${CAMERA_ANGLE_PROMPTS[cameraAngle]}`
+    : "";
+
+  return `${PRODUCT_PRESERVATION}
+
+[CONTEXT]: Professional UK furniture e-commerce photography. The tone is aspirational and lifestyle-focused. Think of it as a premium furniture retailer catalogue.
+
+[SUBJECT & LOGIC]: Place this exact furniture piece naturally in ${userInput}. Ensure the furniture appears grounded with realistic contact shadows. Shadows fall correctly based on visible light sources. Scale is accurate for a real interior space.${angleInstruction}
+
+[STYLE]: Photorealistic commercial interior photography. Natural lighting that accurately represents furniture materials. Reference: high-end British furniture retail photography.
+
+${TECHNICAL_FLAVOR}
+
+[OUTPUT]: ${aspectRatio || "1:1"}. ${resolution || "1k"} resolution.`;
 }
 
 const RESOLUTION_CREDITS: Record<string, number> = {
@@ -92,30 +304,14 @@ serve(async (req) => {
 
     const { image_id, template_id, resolution, custom_prompt, aspect_ratio, camera_angle, set_id, label } = await req.json();
 
-    // Build prompt
+    // Build prompt using C.S.S.T. framework
     let prompt: string;
     if (template_id === "custom" && custom_prompt) {
-      prompt = buildCustomPrompt(custom_prompt);
+      prompt = buildCustomPrompt(custom_prompt, aspect_ratio, resolution, camera_angle);
     } else if (TEMPLATES[template_id]) {
-      prompt = `Using the uploaded furniture image as the exact subject to preserve, ${TEMPLATES[template_id]}`;
+      prompt = buildTemplatePrompt(TEMPLATES[template_id], aspect_ratio, resolution, camera_angle);
     } else {
       throw new Error("Invalid template");
-    }
-
-    // Add aspect ratio instruction
-    if (aspect_ratio && aspect_ratio !== "1:1") {
-      prompt += ` Output the image in ${aspect_ratio} aspect ratio.`;
-    }
-
-    // Add camera angle instruction
-    const CAMERA_ANGLE_PROMPTS: Record<string, string> = {
-      elevated: "Shot from a slightly elevated 3/4 angle, showing the top and front of the furniture.",
-      low_angle: "Shot from a low angle looking upward, making the furniture appear grand and imposing.",
-      side_profile: "Shot from a 90-degree side profile view.",
-      corner_view: "Shot from a 45-degree corner angle showing two sides of the furniture.",
-    };
-    if (camera_angle && CAMERA_ANGLE_PROMPTS[camera_angle]) {
-      prompt += ` ${CAMERA_ANGLE_PROMPTS[camera_angle]}`;
     }
 
     const creditsNeeded = RESOLUTION_CREDITS[resolution] || 1;
@@ -175,10 +371,7 @@ serve(async (req) => {
       .download(imageRecord.original_url);
 
     if (dlErr || !fileData) {
-      await supabaseAdmin
-        .from("jobs")
-        .update({ status: "failed" })
-        .eq("id", job.id);
+      await supabaseAdmin.from("jobs").update({ status: "failed" }).eq("id", job.id);
       throw new Error("Failed to download image");
     }
 
@@ -189,7 +382,7 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("AI service not configured");
 
-    console.log("Calling AI gateway with template:", template_id);
+    console.log("Calling AI gateway with template:", template_id, "| Prompt length:", prompt.length);
 
     const aiResponse = await fetch(
       "https://ai.gateway.lovable.dev/v1/chat/completions",
@@ -223,10 +416,7 @@ serve(async (req) => {
     if (!aiResponse.ok) {
       const errText = await aiResponse.text();
       console.error("AI error:", aiResponse.status, errText);
-      await supabaseAdmin
-        .from("jobs")
-        .update({ status: "failed" })
-        .eq("id", job.id);
+      await supabaseAdmin.from("jobs").update({ status: "failed" }).eq("id", job.id);
 
       if (aiResponse.status === 429) {
         return new Response(
@@ -290,10 +480,7 @@ serve(async (req) => {
     }
 
     if (!generatedBase64) {
-      await supabaseAdmin
-        .from("jobs")
-        .update({ status: "failed" })
-        .eq("id", job.id);
+      await supabaseAdmin.from("jobs").update({ status: "failed" }).eq("id", job.id);
       console.error("No image in AI response:", JSON.stringify(aiResult).substring(0, 1000));
       throw new Error("AI did not return an image. Please try again.");
     }
@@ -314,10 +501,7 @@ serve(async (req) => {
 
     if (uploadErr) {
       console.error("Upload error:", uploadErr);
-      await supabaseAdmin
-        .from("jobs")
-        .update({ status: "failed" })
-        .eq("id", job.id);
+      await supabaseAdmin.from("jobs").update({ status: "failed" }).eq("id", job.id);
       throw new Error("Failed to store generated image");
     }
 
@@ -330,9 +514,7 @@ serve(async (req) => {
     // Deduct credits
     await supabaseAdmin
       .from("profiles")
-      .update({
-        credits_remaining: profile.credits_remaining - creditsNeeded,
-      })
+      .update({ credits_remaining: profile.credits_remaining - creditsNeeded })
       .eq("id", user.id);
 
     // Get signed URL for the result
@@ -349,20 +531,13 @@ serve(async (req) => {
         output_url: signedUrl?.signedUrl || null,
         credits_remaining: profile.credits_remaining - creditsNeeded,
       }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {
     console.error("generate-staging error:", e);
     return new Response(
-      JSON.stringify({
-        error: e instanceof Error ? e.message : "Unknown error",
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
