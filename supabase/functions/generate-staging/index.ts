@@ -8,17 +8,16 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// ── Product Preservation Prefix (prepended to EVERY prompt) ──
-const PRODUCT_PRESERVATION = `Using the uploaded furniture image as the PRIMARY REFERENCE that must be preserved EXACTLY. Maintain the exact shape, proportions, materials, textures, colors, and all design details. Only change the background environment.
-
-QUALITY NON-NEGOTIABLES:
-- Furniture product is identical to uploaded image
-- No extra legs, arms, or altered proportions
-- Materials look the same (not changed from fabric to leather, etc.)
-- Colors match the original
-- Furniture is properly grounded (not floating)
-- Shadows are physically accurate
-- Scale is realistic for the room`;
+// ── MANDATORY Product Preservation Prefix ──
+const PRODUCT_PRESERVATION = `CRITICAL INSTRUCTION: You are receiving a furniture product image. This furniture must appear IDENTICALLY in the output:
+- EXACT same shape and silhouette - do not alter proportions
+- EXACT same materials - if velvet, show velvet; if leather, show leather
+- EXACT same color - match the precise shade and tone
+- EXACT same details - every button, stitch, leg, arm, cushion, hardware
+- EXACT same texture - fabric weave, wood grain, metal finish
+- This is the SAME product, not a similar one
+- ONLY add a new background environment around it
+- DO NOT regenerate or reinterpret the furniture`;
 
 // ── Technical Flavor (appended to every prompt) ──
 const TECHNICAL_FLAVOR = `[TECHNICAL FLAVOR]: Subtle depth of field with background slightly soft. Natural material textures clearly rendered. Gentle photographic grain visible at full resolution.`;
@@ -45,6 +44,29 @@ interface TemplateConfig {
   styleReference: string;
 }
 
+// ── Room Lock structure for batch consistency ──
+interface RoomLock {
+  room_template: string;
+  wall_color: string;
+  floor: string;
+  light_direction: string;
+  shadow_direction: string;
+  props: string[];
+  atmosphere: string;
+}
+
+function extractRoomLock(templateId: string, config: TemplateConfig): RoomLock {
+  return {
+    room_template: templateId,
+    wall_color: config.roomDescription,
+    floor: config.flooring,
+    light_direction: config.lightSource,
+    shadow_direction: config.shadowDirection,
+    props: config.propsDecor.split(",").map(s => s.trim()),
+    atmosphere: config.lightingDescription,
+  };
+}
+
 const TEMPLATES: Record<string, TemplateConfig> = {
   // LIVING ROOM
   scandinavian: {
@@ -52,9 +74,9 @@ const TEMPLATES: Record<string, TemplateConfig> = {
     contextAnchor: "a Scandinavian Design Centre catalogue shot",
     roomDescription: "a modern Scandinavian living room with floor-to-ceiling windows casting soft natural daylight, white walls, and minimal decor",
     flooring: "light oak hardwood flooring",
-    lightSource: "Soft natural daylight from large windows",
-    shadowDirection: "gentle diffused shadows falling to the right",
-    propsDecor: "a wool throw draped nearby, a monstera plant in a ceramic pot, and a simple oak side table",
+    lightSource: "Soft natural daylight from large windows on the LEFT side",
+    shadowDirection: "gentle diffused shadows falling to the RIGHT",
+    propsDecor: "a wool throw draped nearby, a monstera plant in a ceramic pot positioned rear-left, and a simple oak side table",
     lightingDescription: "Soft, even natural daylight flooding through sheer curtains. No harsh shadows",
     styleReference: "Kinfolk magazine interior photography, shot with 35mm lens at f/4",
   },
@@ -63,20 +85,20 @@ const TEMPLATES: Record<string, TemplateConfig> = {
     contextAnchor: "a Habitat or Made.com lifestyle shoot",
     roomDescription: "a contemporary living room with warm grey walls and soft afternoon light filtering through sheer curtains",
     flooring: "a textured wool area rug over grey-toned engineered wood",
-    lightSource: "Warm afternoon sun filtering through sheer curtains",
-    shadowDirection: "soft warm shadows falling to the left",
-    propsDecor: "minimalist abstract art on the wall, a ceramic vase with dried pampas grass, and stacked coffee table books",
+    lightSource: "Warm afternoon sun filtering through sheer curtains on the RIGHT side",
+    shadowDirection: "soft warm shadows falling to the LEFT",
+    propsDecor: "minimalist abstract art on the wall, a ceramic vase with dried pampas grass rear-right, and stacked coffee table books",
     lightingDescription: "Warm, golden-hour afternoon light with gentle shadow play",
     styleReference: "Elle Decoration UK editorial, shot with 50mm lens at f/4",
   },
   cozy_british: {
     mood: "rich, traditional, and quintessentially British",
     contextAnchor: "a Country Life or Homes & Gardens magazine feature",
-    roomDescription: "a classic British drawing room with a traditional fireplace, gilt mirror above, and tall sash windows with floor-length velvet curtains",
+    roomDescription: "a classic British drawing room with a traditional fireplace on the LEFT wall, gilt mirror above, and tall sash windows with floor-length velvet curtains",
     flooring: "dark oak parquet with a Persian rug",
-    lightSource: "Soft natural light from tall sash windows mixed with warm firelight glow",
+    lightSource: "Soft natural light from tall sash windows on the RIGHT mixed with warm firelight glow from the LEFT",
     shadowDirection: "warm layered shadows with firelight creating depth",
-    propsDecor: "leather-bound books on shelves, a silver tea service on a side table, fresh flowers in a crystal vase, and velvet cushions",
+    propsDecor: "leather-bound books on shelves rear-left, a silver tea service on a side table right, fresh flowers in a crystal vase, and velvet cushions",
     lightingDescription: "Rich, warm interior light mixing window daylight with ambient fireplace glow",
     styleReference: "Country Life magazine interiors, shot with 50mm lens at f/4",
   },
@@ -85,33 +107,32 @@ const TEMPLATES: Record<string, TemplateConfig> = {
     contextAnchor: "a Robb Report or Architectural Digest penthouse feature",
     roomDescription: "a luxury penthouse apartment with floor-to-ceiling windows revealing a city skyline at golden hour",
     flooring: "polished Italian marble with subtle veining and gentle reflections",
-    lightSource: "Golden hour sunlight streaming through panoramic windows",
-    shadowDirection: "long dramatic golden shadows stretching across the marble floor",
-    propsDecor: "sculptural designer lighting, a curated art piece, and a champagne-toned accent table",
+    lightSource: "Golden hour sunlight streaming through panoramic windows from the LEFT",
+    shadowDirection: "long dramatic golden shadows stretching to the RIGHT across the marble floor",
+    propsDecor: "sculptural designer lighting rear-right, a curated art piece on the wall, and a champagne-toned accent table",
     lightingDescription: "Dramatic golden-hour light with rich warm tones and defined highlights on marble surfaces",
     styleReference: "Architectural Digest luxury editorial, shot with 24mm lens at f/5.6",
   },
   minimalist_white: {
     mood: "pure, stark, and gallery-like",
     contextAnchor: "a Vitsoe or Vitra minimalist showroom photograph",
-    roomDescription: "a pure minimalist interior with white walls and stark directional light from a single large window. Almost no decor—the furniture is the sole focal point",
+    roomDescription: "a pure minimalist interior with white walls and stark directional light from a single large window on the LEFT. Almost no decor—the furniture is the sole focal point",
     flooring: "light polished concrete",
-    lightSource: "Single directional light from one large window",
-    shadowDirection: "clean defined shadows falling sharply to one side",
+    lightSource: "Single directional light from one large window on the LEFT",
+    shadowDirection: "clean defined shadows falling sharply to the RIGHT",
     propsDecor: "virtually nothing—pure negative space with perhaps a single geometric object",
     lightingDescription: "Stark, clean directional light creating bold contrast between light and shadow",
     styleReference: "Cereal magazine minimalism, shot with 35mm lens at f/8",
   },
-
   // BEDROOM
   serene_bedroom: {
     mood: "peaceful, soft, and sanctuary-like",
     contextAnchor: "a The White Company or Loaf bedroom catalogue",
-    roomDescription: "a serene bedroom with soft white walls, gentle morning light filtering through linen curtains, and layered white bedding",
+    roomDescription: "a serene bedroom with soft white walls, gentle morning light filtering through linen curtains on the RIGHT",
     flooring: "plush cream carpet",
-    lightSource: "Gentle morning sunlight filtering through linen curtains",
-    shadowDirection: "very soft diffused shadows with minimal contrast",
-    propsDecor: "layered white and cream textiles, a ceramic bedside lamp, and a small vase of dried eucalyptus",
+    lightSource: "Gentle morning sunlight filtering through linen curtains on the RIGHT",
+    shadowDirection: "very soft diffused shadows falling to the LEFT with minimal contrast",
+    propsDecor: "layered white and cream textiles, a ceramic bedside lamp on the left, and a small vase of dried eucalyptus",
     lightingDescription: "Soft, dreamy morning light with a warm glow. Ethereal and calming atmosphere",
     styleReference: "The White Company brand photography, shot with 50mm lens at f/2.8",
   },
@@ -120,9 +141,9 @@ const TEMPLATES: Record<string, TemplateConfig> = {
     contextAnchor: "a boutique hotel feature in Condé Nast Traveller",
     roomDescription: "a boutique hotel room with dark forest green walls, brass pendant lights casting warm pools of light, and velvet cushions",
     flooring: "dark herringbone timber with a plush area rug",
-    lightSource: "Warm brass pendant lights and subtle ambient uplighting",
+    lightSource: "Warm brass pendant lights from above and subtle ambient uplighting",
     shadowDirection: "dramatic pools of warm light with deep atmospheric shadows",
-    propsDecor: "velvet cushions in jewel tones, a brass-framed mirror, a stack of art books, and a cashmere throw",
+    propsDecor: "velvet cushions in jewel tones, a brass-framed mirror on the wall, a stack of art books rear-left, and a cashmere throw",
     lightingDescription: "Moody, warm atmospheric lighting with brass-toned highlights. Evening ambiance",
     styleReference: "Condé Nast Traveller hotel interiors, shot with 35mm lens at f/2.8",
   },
@@ -131,22 +152,21 @@ const TEMPLATES: Record<string, TemplateConfig> = {
     contextAnchor: "a Neptune or seaside cottage feature in Living Etc",
     roomDescription: "a light and airy bedroom with white shiplap walls, abundant natural light from multiple windows, and rattan accents",
     flooring: "bleached oak floorboards",
-    lightSource: "Bright natural daylight from multiple windows",
+    lightSource: "Bright natural daylight from multiple windows on LEFT and RIGHT",
     shadowDirection: "light, airy shadows with high-key brightness throughout",
-    propsDecor: "rattan baskets, trailing pothos plants, linen textiles in natural tones, and a driftwood accent",
+    propsDecor: "rattan baskets rear-right, trailing pothos plants, linen textiles in natural tones, and a driftwood accent",
     lightingDescription: "Bright, high-key natural light creating a fresh, sun-washed coastal feel",
     styleReference: "Living Etc coastal interiors, shot with 35mm lens at f/4",
   },
-
   // DINING
   modern_dining: {
     mood: "sociable, warm, and contemporary",
     contextAnchor: "a Heal's or Habitat dining collection campaign",
-    roomDescription: "a modern dining space with a statement pendant light above, large windows with a garden view",
+    roomDescription: "a modern dining space with a statement pendant light above, large windows with a garden view on the LEFT",
     flooring: "dark oak engineered wood",
-    lightSource: "Statement pendant light above plus natural window light from the side",
-    shadowDirection: "defined downward shadows from pendant with softer side-fill from windows",
-    propsDecor: "white tableware set for dinner, linen napkins, a ceramic jug with fresh greenery, and simple dining chairs",
+    lightSource: "Statement pendant light above plus natural window light from the LEFT side",
+    shadowDirection: "defined downward shadows from pendant with softer side-fill from LEFT windows",
+    propsDecor: "white tableware set for dinner, linen napkins, a ceramic jug with fresh greenery center-table, and simple dining chairs",
     lightingDescription: "Warm pendant glow combined with cool natural window light creating dimensional lighting",
     styleReference: "Heal's lifestyle campaign, shot with 24mm lens at f/5.6",
   },
@@ -155,37 +175,35 @@ const TEMPLATES: Record<string, TemplateConfig> = {
     contextAnchor: "a feature in Country Homes & Interiors magazine",
     roomDescription: "a rustic farmhouse dining room with exposed ceiling beams, whitewashed walls, and vintage character",
     flooring: "reclaimed wide-plank timber",
-    lightSource: "Warm natural light from a farmhouse window plus vintage pendant lights",
+    lightSource: "Warm natural light from a farmhouse window on the RIGHT plus vintage pendant lights above",
     shadowDirection: "warm, textured shadows with beam patterns on the table",
-    propsDecor: "a linen table runner, a ceramic pitcher with wildflowers, mismatched vintage chairs, and a bread board with artisan loaf",
+    propsDecor: "a linen table runner, a ceramic pitcher with wildflowers center-table, mismatched vintage chairs, and a bread board with artisan loaf",
     lightingDescription: "Warm, rustic lighting mixing natural window light with vintage pendant glow",
     styleReference: "Country Homes & Interiors editorial, shot with 35mm lens at f/4",
   },
-
   // OFFICE
   modern_office: {
     mood: "productive, clean, and inspiring",
     contextAnchor: "a John Lewis home office collection shoot",
-    roomDescription: "a modern home office with clean white walls, a large window with city or garden view, and built-in shelving",
+    roomDescription: "a modern home office with clean white walls, a large window with city or garden view on the LEFT, and built-in shelving on the RIGHT wall",
     flooring: "light timber or clean carpet",
-    lightSource: "Bright natural daylight from a large desk-side window",
-    shadowDirection: "clean shadows from window light falling across the desk area",
-    propsDecor: "neatly arranged books, a small potted plant, a designer desk lamp, and minimal desk accessories",
+    lightSource: "Bright natural daylight from a large window on the LEFT",
+    shadowDirection: "clean shadows from LEFT window light falling to the RIGHT across the desk area",
+    propsDecor: "neatly arranged books on RIGHT shelving, a small potted plant on desk, a designer desk lamp, and minimal desk accessories",
     lightingDescription: "Bright, focused natural daylight ideal for a productive workspace",
     styleReference: "John Lewis Home campaign photography, shot with 35mm lens at f/5.6",
   },
   creative_studio: {
     mood: "inspiring, artistic, and industrially chic",
     contextAnchor: "a creative workspace feature in Dezeen or Monocle",
-    roomDescription: "a creative studio space with white brick walls, large industrial windows, and an inspiring artistic atmosphere",
+    roomDescription: "a creative studio space with white brick walls, large industrial windows on the LEFT, and an inspiring artistic atmosphere",
     flooring: "polished concrete",
-    lightSource: "Large industrial windows letting in abundant natural light",
-    shadowDirection: "industrial window-frame shadow patterns with bright even fill",
-    propsDecor: "mood boards pinned to the wall, trailing plants from shelves, warm task lighting, and art supplies",
+    lightSource: "Large industrial windows on the LEFT letting in abundant natural light",
+    shadowDirection: "industrial window-frame shadow patterns falling to the RIGHT with bright even fill",
+    propsDecor: "mood boards pinned to the rear wall, trailing plants from shelves rear-right, warm task lighting, and art supplies",
     lightingDescription: "Bright, even industrial light with warm task-light accents",
     styleReference: "Monocle workspace editorial, shot with 24mm lens at f/4",
   },
-
   // STUDIO / PRODUCT
   white_background: {
     mood: "clean, professional, and product-focused",
@@ -203,7 +221,7 @@ const TEMPLATES: Record<string, TemplateConfig> = {
     contextAnchor: "a professional furniture product photograph for a premium catalogue",
     roomDescription: "a seamless medium grey studio background with professional three-point lighting: key light from upper left, fill light from right, backlight for rim separation",
     flooring: "seamless grey studio backdrop sweeping to floor",
-    lightSource: "Professional three-point lighting setup",
+    lightSource: "Professional three-point lighting setup: key upper-left, fill right, backlight behind",
     shadowDirection: "defined key shadow to the right with fill-softened edges and rim highlight behind",
     propsDecor: "nothing—clean studio environment",
     lightingDescription: "Professional three-point studio lighting with key, fill, and backlight for dimensional product photography",
@@ -222,30 +240,51 @@ const TEMPLATES: Record<string, TemplateConfig> = {
   },
 };
 
+// ── Build room lock text from stored room_lock data ──
+function buildRoomLockPrompt(roomLock: RoomLock): string {
+  return `BATCH CONSISTENCY REQUIRED: Match the EXACT room from image 1 of this batch. Same wall color, same floor, same lighting direction, same props in same positions, same atmosphere. Only the furniture product changes.
+
+Room details to match EXACTLY:
+- Room: ${roomLock.wall_color}
+- Floor: ${roomLock.floor}
+- Light source: ${roomLock.light_direction}
+- Shadow direction: ${roomLock.shadow_direction}
+- Props: ${roomLock.props.join(", ")}
+- Atmosphere: ${roomLock.atmosphere}
+
+`;
+}
+
 // ── Batch consistency prefix ──
-function buildBatchConsistencyPrefix(batchInfo: { index: number; total: number; label?: string } | null, config: TemplateConfig | null): string {
+function buildBatchConsistencyPrefix(
+  batchInfo: { index: number; total: number; label?: string } | null,
+  config: TemplateConfig | null,
+  roomLock: RoomLock | null
+): string {
   if (!batchInfo || batchInfo.total <= 1) return "";
 
-  const roomDetails = config
-    ? `Wall color: ${config.roomDescription}. Flooring: ${config.flooring}. Lighting setup: ${config.lightSource}, ${config.shadowDirection}. Props: ${config.propsDecor}.`
-    : "";
+  // For image 2+ with a stored room_lock, use that for exact matching
+  if (batchInfo.index > 0 && roomLock) {
+    const labelHint = batchInfo.label?.toLowerCase() || "";
+    const isCloseUp = labelHint.includes("close") || labelHint.includes("detail") || labelHint.includes("fabric") || labelHint.includes("texture");
 
-  if (batchInfo.index === 0) {
-    return `BATCH CONSISTENCY REQUIREMENT: This is image ${batchInfo.index + 1} of ${batchInfo.total} in a product set. ALL images in this set must appear as if photographed in the EXACT SAME ROOM during the SAME photoshoot session. This is the HERO image — establish the room environment precisely. ${roomDetails}
+    const closeUpNote = isCloseUp
+      ? "\nThis is a close-up/detail shot: show PARTIAL room background (blurred floor, partial wall visible). Same flooring color/material at edges, same lighting direction and color temperature, same ambient mood — but zoomed in on furniture detail."
+      : "";
 
-Maintain identical room layout, architecture, wall colors, flooring, lighting setup, light direction, shadow angles, color temperature, mood, background props in same positions, and time of day atmosphere across the entire set. The ONLY difference between images should be the furniture product itself and its position/angle in the scene.
+    return `${buildRoomLockPrompt(roomLock)}This is image ${batchInfo.index + 1} of ${batchInfo.total} in a product set. ALL images must appear as if photographed in the EXACT SAME ROOM during the SAME photoshoot session.${closeUpNote}
 
 `;
   }
 
-  const labelHint = batchInfo.label?.toLowerCase() || "";
-  const isCloseUp = labelHint.includes("close") || labelHint.includes("detail") || labelHint.includes("fabric") || labelHint.includes("texture");
+  // For image 1, establish the room
+  const roomDetails = config
+    ? `Wall color: ${config.roomDescription}. Flooring: ${config.flooring}. Lighting setup: ${config.lightSource}, ${config.shadowDirection}. Props: ${config.propsDecor}.`
+    : "";
 
-  const closeUpNote = isCloseUp
-    ? " This is a close-up/detail shot: show PARTIAL room background (blurred floor, partial wall visible). Same flooring color/material at edges, same lighting direction and color temperature, same ambient mood — but zoomed in on furniture detail."
-    : " Match the exact room environment from the first image in this batch. Same walls, floor, lighting, props, atmosphere.";
+  return `BATCH CONSISTENCY REQUIREMENT: This is image 1 of ${batchInfo.total} in a product set. ALL images in this set must appear as if photographed in the EXACT SAME ROOM during the SAME photoshoot session. This is the HERO image — establish the room environment precisely. ${roomDetails}
 
-  return `BATCH CONSISTENCY REQUIREMENT: This is image ${batchInfo.index + 1} of ${batchInfo.total} in a product set. ALL images in this set must appear as if photographed in the EXACT SAME ROOM during the SAME photoshoot session. ${roomDetails}${closeUpNote}
+Maintain identical room layout, architecture, wall colors, flooring, lighting setup, light direction, shadow angles, color temperature, mood, background props in same positions, and time of day atmosphere across the entire set. The ONLY difference between images should be the furniture product itself.
 
 `;
 }
@@ -256,17 +295,16 @@ function buildTemplatePrompt(
   aspectRatio: string,
   resolution: string,
   cameraAngle: string | null,
-  batchInfo: { index: number; total: number; label?: string } | null = null
+  batchInfo: { index: number; total: number; label?: string } | null = null,
+  roomLock: RoomLock | null = null
 ): string {
   const angleInstruction = cameraAngle && CAMERA_ANGLE_PROMPTS[cameraAngle]
     ? ` ${CAMERA_ANGLE_PROMPTS[cameraAngle]}`
     : " Camera at eye level, straight-on view of the furniture.";
 
-  const batchPrefix = buildBatchConsistencyPrefix(batchInfo, config);
+  const batchPrefix = buildBatchConsistencyPrefix(batchInfo, config, roomLock);
 
-  return `${batchPrefix}${PRODUCT_PRESERVATION}
-
-[CONTEXT]: This image is for premium UK furniture e-commerce. The tone is ${config.mood}. Think of it as ${config.contextAnchor}.
+  return `${batchPrefix}[CONTEXT]: This image is for premium UK furniture e-commerce. The tone is ${config.mood}. Think of it as ${config.contextAnchor}.
 
 [SUBJECT & LOGIC]: Place this exact furniture piece naturally in ${config.roomDescription}. The furniture sits on ${config.flooring}. ${config.lightSource} casts ${config.shadowDirection}. Include ${config.propsDecor}. The furniture appears grounded with realistic contact shadows where it meets the floor. Scale is accurate for a real interior.${angleInstruction}
 
@@ -283,17 +321,16 @@ function buildCustomPrompt(
   aspectRatio: string,
   resolution: string,
   cameraAngle: string | null,
-  batchInfo: { index: number; total: number; label?: string } | null = null
+  batchInfo: { index: number; total: number; label?: string } | null = null,
+  roomLock: RoomLock | null = null
 ): string {
   const angleInstruction = cameraAngle && CAMERA_ANGLE_PROMPTS[cameraAngle]
     ? ` ${CAMERA_ANGLE_PROMPTS[cameraAngle]}`
     : "";
 
-  const batchPrefix = buildBatchConsistencyPrefix(batchInfo, null);
+  const batchPrefix = buildBatchConsistencyPrefix(batchInfo, null, roomLock);
 
-  return `${batchPrefix}${PRODUCT_PRESERVATION}
-
-[CONTEXT]: Professional UK furniture e-commerce photography. The tone is aspirational and lifestyle-focused. Think of it as a premium furniture retailer catalogue.
+  return `${batchPrefix}[CONTEXT]: Professional UK furniture e-commerce photography. The tone is aspirational and lifestyle-focused. Think of it as a premium furniture retailer catalogue.
 
 [SUBJECT & LOGIC]: Place this exact furniture piece naturally in ${userInput}. Ensure the furniture appears grounded with realistic contact shadows. Shadows fall correctly based on visible light sources. Scale is accurate for a real interior space.${angleInstruction}
 
@@ -336,19 +373,23 @@ serve(async (req) => {
     } = await supabaseUser.auth.getUser();
     if (authErr || !user) throw new Error("Unauthorized");
 
-    const { image_id, template_id, resolution, custom_prompt, aspect_ratio, camera_angle, set_id, label, batch_index, batch_total } = await req.json();
+    const { image_id, template_id, resolution, custom_prompt, aspect_ratio, camera_angle, set_id, label, batch_index, batch_total, room_lock } = await req.json();
 
     // Build batch info if present
     const batchInfo = typeof batch_index === "number" && typeof batch_total === "number" && batch_total > 1
       ? { index: batch_index, total: batch_total, label: label || undefined }
       : null;
 
+    // Get room_lock for batch images 2+
+    let roomLockData: RoomLock | null = room_lock || null;
+
     // Build prompt using C.S.S.T. framework
     let prompt: string;
+    const templateConfig = TEMPLATES[template_id];
     if (template_id === "custom" && custom_prompt) {
-      prompt = buildCustomPrompt(custom_prompt, aspect_ratio, resolution, camera_angle, batchInfo);
-    } else if (TEMPLATES[template_id]) {
-      prompt = buildTemplatePrompt(TEMPLATES[template_id], aspect_ratio, resolution, camera_angle, batchInfo);
+      prompt = buildCustomPrompt(custom_prompt, aspect_ratio, resolution, camera_angle, batchInfo, roomLockData);
+    } else if (templateConfig) {
+      prompt = buildTemplatePrompt(templateConfig, aspect_ratio, resolution, camera_angle, batchInfo, roomLockData);
     } else {
       throw new Error("Invalid template");
     }
@@ -417,11 +458,17 @@ serve(async (req) => {
     const imageBytes = new Uint8Array(await fileData.arrayBuffer());
     const base64Image = base64Encode(imageBytes);
 
-    // Call Lovable AI
+    // Determine MIME type from filename
+    const mimeType = imageRecord.filename?.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
+
+    // Call Lovable AI with CORRECT structure:
+    // 1. Preservation instruction FIRST
+    // 2. Furniture image as reference
+    // 3. Room/scene prompt
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("AI service not configured");
 
-    console.log("Calling AI gateway with template:", template_id, "| Prompt length:", prompt.length);
+    console.log("Calling AI gateway with template:", template_id, "| Batch:", batchInfo ? `${batchInfo.index + 1}/${batchInfo.total}` : "single", "| Prompt length:", prompt.length);
 
     const aiResponse = await fetch(
       "https://ai.gateway.lovable.dev/v1/chat/completions",
@@ -437,17 +484,28 @@ serve(async (req) => {
             {
               role: "user",
               content: [
-                { type: "text", text: prompt },
+                // STEP 1: Preservation instruction FIRST
+                {
+                  type: "text",
+                  text: `${PRODUCT_PRESERVATION}\n\nCRITICAL: Preserve this EXACT furniture product unchanged. Only place it in a new environment.`,
+                },
+                // STEP 2: The furniture image as PRIMARY reference
                 {
                   type: "image_url",
                   image_url: {
-                    url: `data:image/jpeg;base64,${base64Image}`,
+                    url: `data:${mimeType};base64,${base64Image}`,
                   },
+                },
+                // STEP 3: The room/scene prompt
+                {
+                  type: "text",
+                  text: prompt,
                 },
               ],
             },
           ],
           modalities: ["image", "text"],
+          temperature: 0.3,
         }),
       }
     );
@@ -561,7 +619,21 @@ serve(async (req) => {
       .from("furniture-images")
       .createSignedUrl(outputPath, 3600);
 
-    console.log("Generation complete. Job:", job.id);
+    // Build room_lock for first batch image so client can pass it to subsequent calls
+    let generatedRoomLock: RoomLock | null = null;
+    if (batchInfo && batchInfo.index === 0 && templateConfig) {
+      generatedRoomLock = extractRoomLock(template_id, templateConfig);
+
+      // Store room_lock in product_sets if set_id provided
+      if (set_id) {
+        await supabaseAdmin
+          .from("product_sets")
+          .update({ room_lock: generatedRoomLock } as any)
+          .eq("id", set_id);
+      }
+    }
+
+    console.log("Generation complete. Job:", job.id, batchInfo ? `(batch ${batchInfo.index + 1}/${batchInfo.total})` : "");
 
     return new Response(
       JSON.stringify({
@@ -569,6 +641,7 @@ serve(async (req) => {
         job_id: job.id,
         output_url: signedUrl?.signedUrl || null,
         credits_remaining: profile.credits_remaining - creditsNeeded,
+        room_lock: generatedRoomLock,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

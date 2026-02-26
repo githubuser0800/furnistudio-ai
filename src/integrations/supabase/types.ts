@@ -108,6 +108,7 @@ export type Database = {
           image_count: number
           name: string
           resolution: string | null
+          room_lock: Json | null
           template_id: string | null
           updated_at: string
           user_id: string
@@ -118,6 +119,7 @@ export type Database = {
           image_count?: number
           name?: string
           resolution?: string | null
+          room_lock?: Json | null
           template_id?: string | null
           updated_at?: string
           user_id: string
@@ -128,6 +130,7 @@ export type Database = {
           image_count?: number
           name?: string
           resolution?: string | null
+          room_lock?: Json | null
           template_id?: string | null
           updated_at?: string
           user_id?: string
