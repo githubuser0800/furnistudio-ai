@@ -1,11 +1,15 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useNavigate } from "react-router-dom";
 import Navbar from "@/components/layout/Navbar";
 import StyleSelectionModal from "@/components/dashboard/StyleSelectionModal";
 import ResultsView from "@/components/dashboard/ResultsView";
-import { Upload, Image as ImageIcon, Clock, CheckCircle, AlertCircle, Sparkles } from "lucide-react";
+import LowCreditBanner from "@/components/dashboard/LowCreditBanner";
+import CreditTopUpModal from "@/components/dashboard/CreditTopUpModal";
+import { Upload, Image as ImageIcon, Sparkles, Layers, BarChart3, ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 interface UserImage {
   id: string;
@@ -19,7 +23,33 @@ interface Profile {
   subscription_tier: string;
 }
 
+interface RecentJob {
+  id: string;
+  output_url: string | null;
+  template_id: string | null;
+  created_at: string;
+}
+
 type View = "grid" | "processing" | "results";
+
+const TEMPLATE_NAMES: Record<string, string> = {
+  scandinavian: "Modern Scandinavian",
+  contemporary_grey: "Contemporary Grey",
+  cozy_british: "Cozy British",
+  luxury_penthouse: "Luxury Penthouse",
+  minimalist_white: "Minimalist White",
+  serene_bedroom: "Serene Bedroom",
+  boutique_hotel: "Boutique Hotel",
+  light_airy: "Light & Airy",
+  modern_dining: "Modern Dining",
+  rustic_farmhouse: "Rustic Farmhouse",
+  modern_office: "Modern Home Office",
+  creative_studio: "Creative Studio",
+  white_background: "Pure White Background",
+  grey_studio: "Grey Studio",
+  showroom_floor: "Showroom Floor",
+  custom: "Custom Prompt",
+};
 
 export default function Dashboard() {
   const [images, setImages] = useState<UserImage[]>([]);
@@ -27,7 +57,13 @@ export default function Dashboard() {
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
+  const [recentJobs, setRecentJobs] = useState<RecentJob[]>([]);
+  const [recentJobUrls, setRecentJobUrls] = useState<Record<string, string>>({});
+  const [monthlyUploads, setMonthlyUploads] = useState(0);
+  const [monthlyGenerated, setMonthlyGenerated] = useState(0);
+  const [showTopUp, setShowTopUp] = useState(false);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   // AI generation state
   const [view, setView] = useState<View>("grid");
@@ -41,35 +77,30 @@ export default function Dashboard() {
   } | null>(null);
 
   const fetchData = useCallback(async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const [{ data: profileData }, { data: imagesData }] = await Promise.all([
-      supabase
-        .from("profiles")
-        .select("credits_remaining, subscription_tier")
-        .eq("id", user.id)
-        .single(),
-      supabase
-        .from("images")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false }),
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    const [{ data: profileData }, { data: imagesData }, { data: jobsData }, { data: monthUploads }, { data: monthJobs }] = await Promise.all([
+      supabase.from("profiles").select("credits_remaining, subscription_tier").eq("id", user.id).single(),
+      supabase.from("images").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
+      supabase.from("jobs").select("id, output_url, template_id, created_at").eq("user_id", user.id).eq("status", "completed").order("created_at", { ascending: false }).limit(4),
+      supabase.from("images").select("id", { count: "exact" }).eq("user_id", user.id).gte("created_at", startOfMonth.toISOString()),
+      supabase.from("jobs").select("id", { count: "exact" }).eq("user_id", user.id).eq("status", "completed").gte("created_at", startOfMonth.toISOString()),
     ]);
 
     if (profileData) setProfile(profileData);
+    setMonthlyUploads(monthUploads?.length || 0);
+    setMonthlyGenerated(monthJobs?.length || 0);
+
     if (imagesData) {
       setImages(imagesData);
-      // Fetch signed URLs for display
-      const paths = imagesData
-        .filter((img) => img.original_url)
-        .map((img) => img.original_url!);
+      const paths = imagesData.filter((img) => img.original_url).map((img) => img.original_url!);
       if (paths.length > 0) {
-        const { data: signedData } = await supabase.storage
-          .from("furniture-images")
-          .createSignedUrls(paths, 3600);
+        const { data: signedData } = await supabase.storage.from("furniture-images").createSignedUrls(paths, 3600);
         if (signedData) {
           const urlMap: Record<string, string> = {};
           for (const img of imagesData) {
@@ -80,45 +111,44 @@ export default function Dashboard() {
         }
       }
     }
+
+    if (jobsData && jobsData.length > 0) {
+      setRecentJobs(jobsData);
+      const outputPaths = jobsData.filter((j) => j.output_url).map((j) => j.output_url!);
+      if (outputPaths.length > 0) {
+        const { data: signed } = await supabase.storage.from("furniture-images").createSignedUrls(outputPaths, 3600);
+        if (signed) {
+          const map: Record<string, string> = {};
+          jobsData.forEach((j) => {
+            const s = signed.find((si) => si.path === j.output_url);
+            if (s?.signedUrl) map[j.id] = s.signedUrl;
+          });
+          setRecentJobUrls(map);
+        }
+      }
+    }
   }, []);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   const handleUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
     setUploading(true);
     for (const file of Array.from(files)) {
       const filePath = `${user.id}/${Date.now()}_${file.name}`;
-      const { error: uploadError } = await supabase.storage
-        .from("furniture-images")
-        .upload(filePath, file);
+      const { error: uploadError } = await supabase.storage.from("furniture-images").upload(filePath, file);
       if (uploadError) {
-        toast({
-          title: "Upload failed",
-          description: uploadError.message,
-          variant: "destructive",
-        });
+        toast({ title: "Upload failed", description: uploadError.message, variant: "destructive" });
         continue;
       }
-      await supabase.from("images").insert({
-        user_id: user.id,
-        filename: file.name,
-        original_url: filePath,
-      });
+      await supabase.from("images").insert({ user_id: user.id, filename: file.name, original_url: filePath });
     }
     setUploading(false);
     await fetchData();
-    toast({
-      title: "Upload complete",
-      description: `${files.length} image(s) uploaded.`,
-    });
+    toast({ title: "Upload complete", description: `${files.length} image(s) uploaded.` });
   };
 
   const handleImageClick = (img: UserImage) => {
@@ -126,55 +156,39 @@ export default function Dashboard() {
     setShowStyleModal(true);
   };
 
-  const handleGenerate = async (templateId: string, resolution: string, customPrompt?: string, aspectRatio?: string) => {
+  const handleGenerate = async (templateId: string, resolution: string, customPrompt?: string, aspectRatio?: string, cameraAngle?: string, variations?: number) => {
     if (!selectedImage) return;
     setGenerating(true);
     setShowStyleModal(false);
     setView("processing");
 
     try {
-      const { data, error } = await supabase.functions.invoke(
-        "generate-staging",
-        {
-          body: {
-            image_id: selectedImage.id,
-            template_id: templateId,
-            resolution,
-            ...(customPrompt ? { custom_prompt: customPrompt } : {}),
-            ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}),
-          },
-        }
-      );
+      const { data, error } = await supabase.functions.invoke("generate-staging", {
+        body: {
+          image_id: selectedImage.id,
+          template_id: templateId,
+          resolution,
+          ...(customPrompt ? { custom_prompt: customPrompt } : {}),
+          ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}),
+          ...(cameraAngle ? { camera_angle: cameraAngle } : {}),
+          ...(variations && variations > 1 ? { variations } : {}),
+        },
+      });
 
       if (error) throw new Error(error.message || "Generation failed");
-
-      if (data?.error) {
-        throw new Error(data.error);
-      }
+      if (data?.error) throw new Error(data.error);
 
       if (data?.success && data.output_url) {
         const beforeUrl = imageUrls[selectedImage.id] || "";
-        setResultData({
-          beforeUrl,
-          afterUrl: data.output_url,
-          creditsRemaining: data.credits_remaining,
-        });
-        setProfile((prev) =>
-          prev
-            ? { ...prev, credits_remaining: data.credits_remaining }
-            : prev
-        );
+        setResultData({ beforeUrl, afterUrl: data.output_url, creditsRemaining: data.credits_remaining });
+        setProfile((prev) => prev ? { ...prev, credits_remaining: data.credits_remaining } : prev);
         setView("results");
       } else {
         throw new Error("No output received");
       }
     } catch (err: any) {
       console.error("Generation error:", err);
-      toast({
-        title: "Generation failed",
-        description: err.message || "Please try again.",
-        variant: "destructive",
-      });
+      toast({ title: "Generation failed", description: err.message || "Please try again.", variant: "destructive" });
       setView("grid");
     } finally {
       setGenerating(false);
@@ -183,9 +197,7 @@ export default function Dashboard() {
 
   const handleTryAnother = () => {
     setView("grid");
-    if (selectedImage) {
-      setShowStyleModal(true);
-    }
+    if (selectedImage) setShowStyleModal(true);
   };
 
   const handleBackToDashboard = () => {
@@ -195,34 +207,7 @@ export default function Dashboard() {
     fetchData();
   };
 
-  const statusBadge = (status: string) => {
-    const map: Record<
-      string,
-      { icon: typeof Clock; label: string; className: string }
-    > = {
-      pending: {
-        icon: Clock,
-        label: "Pending",
-        className: "bg-muted text-muted-foreground",
-      },
-      processing: {
-        icon: AlertCircle,
-        label: "Processing",
-        className: "bg-accent/20 text-accent",
-      },
-      completed: {
-        icon: CheckCircle,
-        label: "Completed",
-        className: "bg-green-100 text-green-700",
-      },
-    };
-    const s = map[status] || map.pending;
-    return (
-      <Badge variant="secondary" className={s.className}>
-        <s.icon className="mr-1 h-3 w-3" /> {s.label}
-      </Badge>
-    );
-  };
+  const maxCredits = profile?.subscription_tier === "free" ? 10 : profile?.subscription_tier === "starter" ? 50 : profile?.subscription_tier === "pro" ? 200 : 600;
 
   return (
     <div className="min-h-screen bg-background">
@@ -235,13 +220,8 @@ export default function Dashboard() {
               <div className="h-20 w-20 rounded-full border-4 border-accent/30 border-t-accent animate-spin" />
               <Sparkles className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-8 w-8 text-accent" />
             </div>
-            <h2 className="text-xl font-bold text-foreground mb-2">
-              AI is staging your furniture...
-            </h2>
-            <p className="text-muted-foreground max-w-md">
-              This typically takes 15–30 seconds. We're placing your furniture
-              into a professionally designed room scene.
-            </p>
+            <h2 className="text-xl font-bold text-foreground mb-2">AI is staging your furniture...</h2>
+            <p className="text-muted-foreground max-w-md">This typically takes 15–30 seconds.</p>
           </div>
         )}
 
@@ -259,23 +239,28 @@ export default function Dashboard() {
         {/* Default grid view */}
         {view === "grid" && (
           <>
+            {/* Low Credit Banner */}
+            {profile && (
+              <LowCreditBanner
+                creditsRemaining={profile.credits_remaining}
+                maxCredits={maxCredits}
+                onTopUp={() => setShowTopUp(true)}
+              />
+            )}
+
+            {/* Header */}
             <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
               <div>
-                <h1 className="text-2xl font-bold text-foreground">
-                  Dashboard
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  Upload furniture images and stage them with AI
-                </p>
+                <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+                <p className="text-sm text-muted-foreground">Upload furniture images and stage them with AI</p>
               </div>
               {profile && (
                 <div className="flex items-center gap-3">
-                  <Badge
-                    variant="outline"
-                    className="px-3 py-1 text-sm"
-                  >
-                    {profile.credits_remaining} credits remaining
-                  </Badge>
+                  <button onClick={() => setShowTopUp(true)}>
+                    <Badge variant="outline" className="px-3 py-1 text-sm cursor-pointer hover:bg-accent/10 transition-colors">
+                      {profile.credits_remaining} credits remaining
+                    </Badge>
+                  </button>
                   <Badge className="bg-accent text-accent-foreground capitalize px-3 py-1">
                     {profile.subscription_tier}
                   </Badge>
@@ -283,58 +268,95 @@ export default function Dashboard() {
               )}
             </div>
 
+            {/* Quick Stats */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                  <Upload className="h-4 w-4" />
+                  <span className="text-xs font-medium">Uploads this month</span>
+                </div>
+                <p className="text-2xl font-bold text-foreground">{monthlyUploads}</p>
+              </div>
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                  <Sparkles className="h-4 w-4" />
+                  <span className="text-xs font-medium">Generated this month</span>
+                </div>
+                <p className="text-2xl font-bold text-foreground">{monthlyGenerated}</p>
+              </div>
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                  <BarChart3 className="h-4 w-4" />
+                  <span className="text-xs font-medium">Credits remaining</span>
+                </div>
+                <p className="text-2xl font-bold text-foreground">{profile?.credits_remaining ?? 0}</p>
+              </div>
+              <div className="rounded-xl border border-border bg-card p-4 flex items-center justify-center">
+                <Button variant="outline" size="sm" onClick={() => navigate("/dashboard/library")} className="w-full">
+                  <Layers className="mr-2 h-4 w-4" /> View Library
+                </Button>
+              </div>
+            </div>
+
+            {/* Recent Generated */}
+            {recentJobs.length > 0 && (
+              <div className="mb-8">
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-lg font-semibold text-foreground">Recent Generations</h2>
+                  <button onClick={() => navigate("/dashboard/library")} className="text-sm text-accent hover:underline flex items-center gap-1">
+                    View All <ArrowRight className="h-3 w-3" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {recentJobs.map((job) => (
+                    <div key={job.id} className="rounded-xl border border-border bg-card overflow-hidden">
+                      <div className="aspect-square bg-muted overflow-hidden">
+                        {recentJobUrls[job.id] ? (
+                          <img src={recentJobUrls[job.id]} alt="Generated" className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="h-full w-full flex items-center justify-center">
+                            <Layers className="h-8 w-8 text-muted-foreground/30" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-2">
+                        <p className="text-xs font-medium text-card-foreground truncate">
+                          {TEMPLATE_NAMES[job.template_id || ""] || "Custom"}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {new Date(job.created_at).toLocaleDateString("en-GB")}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Upload Zone */}
             <div
               className={`mb-10 flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-12 transition-colors ${
-                dragOver
-                  ? "border-accent bg-accent/5"
-                  : "border-border hover:border-accent/50"
+                dragOver ? "border-accent bg-accent/5" : "border-border hover:border-accent/50"
               }`}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragOver(true);
-              }}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
               onDragLeave={() => setDragOver(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragOver(false);
-                handleUpload(e.dataTransfer.files);
-              }}
+              onDrop={(e) => { e.preventDefault(); setDragOver(false); handleUpload(e.dataTransfer.files); }}
               onClick={() => document.getElementById("file-input")?.click()}
             >
-              <input
-                id="file-input"
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={(e) => handleUpload(e.target.files)}
-              />
-              <Upload
-                className={`mb-4 h-10 w-10 ${
-                  dragOver ? "text-accent" : "text-muted-foreground"
-                }`}
-              />
+              <input id="file-input" type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleUpload(e.target.files)} />
+              <Upload className={`mb-4 h-10 w-10 ${dragOver ? "text-accent" : "text-muted-foreground"}`} />
               <p className="mb-1 text-lg font-medium text-foreground">
-                {uploading
-                  ? "Uploading..."
-                  : "Drop furniture images here or click to browse"}
+                {uploading ? "Uploading..." : "Drop furniture images here or click to browse"}
               </p>
-              <p className="text-sm text-muted-foreground">
-                JPG, PNG, WebP up to 10MB each
-              </p>
+              <p className="text-sm text-muted-foreground">JPG, PNG, WebP up to 10MB each</p>
             </div>
 
             {/* Images Grid */}
             {images.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
                 <ImageIcon className="mb-4 h-12 w-12 text-muted-foreground/40" />
-                <p className="text-lg font-medium text-muted-foreground">
-                  No images yet
-                </p>
-                <p className="text-sm text-muted-foreground/60">
-                  Upload your first furniture photo to get started
-                </p>
+                <p className="text-lg font-medium text-muted-foreground">No images yet</p>
+                <p className="text-sm text-muted-foreground/60">Upload your first furniture photo to get started</p>
               </div>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
@@ -346,11 +368,7 @@ export default function Dashboard() {
                   >
                     <div className="aspect-square bg-muted flex items-center justify-center overflow-hidden relative">
                       {imageUrls[img.id] ? (
-                        <img
-                          src={imageUrls[img.id]}
-                          alt={img.filename}
-                          className="h-full w-full object-cover transition-transform group-hover:scale-105"
-                        />
+                        <img src={imageUrls[img.id]} alt={img.filename} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
                       ) : (
                         <ImageIcon className="h-10 w-10 text-muted-foreground/30" />
                       )}
@@ -359,15 +377,9 @@ export default function Dashboard() {
                       </div>
                     </div>
                     <div className="p-3">
-                      <p className="truncate text-sm font-medium text-card-foreground">
-                        {img.filename}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(img.created_at).toLocaleDateString("en-GB")}
-                      </p>
-                      <p className="text-xs text-accent mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        Click to stage with AI →
-                      </p>
+                      <p className="truncate text-sm font-medium text-card-foreground">{img.filename}</p>
+                      <p className="text-xs text-muted-foreground">{new Date(img.created_at).toLocaleDateString("en-GB")}</p>
+                      <p className="text-xs text-accent mt-1 opacity-0 group-hover:opacity-100 transition-opacity">Click to stage with AI →</p>
                     </div>
                   </div>
                 ))}
@@ -377,7 +389,6 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Style Selection Modal */}
       <StyleSelectionModal
         open={showStyleModal}
         onClose={() => setShowStyleModal(false)}
@@ -385,6 +396,12 @@ export default function Dashboard() {
         creditsRemaining={profile?.credits_remaining ?? 0}
         loading={generating}
         imageName={selectedImage?.filename ?? ""}
+      />
+
+      <CreditTopUpModal
+        open={showTopUp}
+        onClose={() => setShowTopUp(false)}
+        creditsRemaining={profile?.credits_remaining ?? 0}
       />
     </div>
   );

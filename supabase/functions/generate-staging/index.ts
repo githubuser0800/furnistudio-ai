@@ -90,7 +90,7 @@ serve(async (req) => {
     } = await supabaseUser.auth.getUser();
     if (authErr || !user) throw new Error("Unauthorized");
 
-    const { image_id, template_id, resolution, custom_prompt, aspect_ratio } = await req.json();
+    const { image_id, template_id, resolution, custom_prompt, aspect_ratio, camera_angle } = await req.json();
 
     // Build prompt
     let prompt: string;
@@ -105,6 +105,17 @@ serve(async (req) => {
     // Add aspect ratio instruction
     if (aspect_ratio && aspect_ratio !== "1:1") {
       prompt += ` Output the image in ${aspect_ratio} aspect ratio.`;
+    }
+
+    // Add camera angle instruction
+    const CAMERA_ANGLE_PROMPTS: Record<string, string> = {
+      elevated: "Shot from a slightly elevated 3/4 angle, showing the top and front of the furniture.",
+      low_angle: "Shot from a low angle looking upward, making the furniture appear grand and imposing.",
+      side_profile: "Shot from a 90-degree side profile view.",
+      corner_view: "Shot from a 45-degree corner angle showing two sides of the furniture.",
+    };
+    if (camera_angle && CAMERA_ANGLE_PROMPTS[camera_angle]) {
+      prompt += ` ${CAMERA_ANGLE_PROMPTS[camera_angle]}`;
     }
 
     const creditsNeeded = RESOLUTION_CREDITS[resolution] || 1;
@@ -148,6 +159,8 @@ serve(async (req) => {
         template_id: template_id === "custom" ? "custom" : template_id,
         credits_used: creditsNeeded,
         status: "processing",
+        camera_angle: camera_angle || null,
+        resolution: resolution || "1k",
       })
       .select()
       .single();

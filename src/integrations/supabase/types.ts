@@ -40,31 +40,37 @@ export type Database = {
       }
       jobs: {
         Row: {
+          camera_angle: string | null
           created_at: string
           credits_used: number
           id: string
           image_id: string | null
           output_url: string | null
+          resolution: string | null
           status: string
           template_id: string | null
           user_id: string
         }
         Insert: {
+          camera_angle?: string | null
           created_at?: string
           credits_used?: number
           id?: string
           image_id?: string | null
           output_url?: string | null
+          resolution?: string | null
           status?: string
           template_id?: string | null
           user_id: string
         }
         Update: {
+          camera_angle?: string | null
           created_at?: string
           credits_used?: number
           id?: string
           image_id?: string | null
           output_url?: string | null
+          resolution?: string | null
           status?: string
           template_id?: string | null
           user_id?: string
@@ -87,8 +93,10 @@ export type Database = {
           default_resolution: string | null
           default_template: string | null
           email: string | null
+          favorite_templates: string[] | null
           full_name: string | null
           id: string
+          recent_templates: string[] | null
           subscription_tier: string
           updated_at: string
         }
@@ -99,8 +107,10 @@ export type Database = {
           default_resolution?: string | null
           default_template?: string | null
           email?: string | null
+          favorite_templates?: string[] | null
           full_name?: string | null
           id: string
+          recent_templates?: string[] | null
           subscription_tier?: string
           updated_at?: string
         }
@@ -111,8 +121,10 @@ export type Database = {
           default_resolution?: string | null
           default_template?: string | null
           email?: string | null
+          favorite_templates?: string[] | null
           full_name?: string | null
           id?: string
+          recent_templates?: string[] | null
           subscription_tier?: string
           updated_at?: string
         }
