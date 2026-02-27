@@ -525,7 +525,7 @@ ${shotPrompt}
 [TECHNICAL FLAVOR]: ${config.lensSpec}. ${imperfections[0]}. ${imperfections[1]}.
 
 [ASPECT RATIO]: ${aspectRatio || "1:1"}.
-[RESOLUTION]: ${resolution || "1k"}.`;
+[RESOLUTION]: 4K (4096px).`;
   }
 
   return `${batchNote}[CONTEXT]: This is a premium furniture e-commerce photograph for a UK retailer website. The tone is ${config.mood}. Think of it as ${config.contextAnchor}.
@@ -537,7 +537,7 @@ ${shotPrompt}
 [TECHNICAL FLAVOR]: ${config.lensSpec}. ${imperfections[0]}. ${imperfections[1]}.
 
 [ASPECT RATIO]: ${aspectRatio || "1:1"}.
-[RESOLUTION]: ${resolution || "1k"}.`;
+[RESOLUTION]: 4K (4096px).`;
 }
 
 // ── Build a C.S.S.T. prompt from a custom user description (image 1 only) ──
@@ -567,7 +567,7 @@ function buildCustomPrompt(
 [TECHNICAL FLAVOR]: Shot with a 35mm lens at f/4. ${imperfections[0]}. ${imperfections[1]}.
 
 [ASPECT RATIO]: ${aspectRatio || "1:1"}.
-[RESOLUTION]: ${resolution || "1k"}.`;
+[RESOLUTION]: 4K (4096px).`;
 }
 
 // ── Build editing prompt for images 2+ using shot-type matching ──
@@ -619,11 +619,8 @@ ${PRODUCT_PRESERVATION}
 }
 
 
-const RESOLUTION_CREDITS: Record<string, number> = {
-  "1k": 1,
-  "2k": 2,
-  "4k": 3,
-};
+// V2: All generations are 4K, 1 credit each
+const GENERATION_CREDIT_COST = 1;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -685,7 +682,7 @@ serve(async (req) => {
       throw new Error("Invalid template");
     }
 
-    const creditsNeeded = RESOLUTION_CREDITS[resolution] || 1;
+    const creditsNeeded = GENERATION_CREDIT_COST;
 
     // Check credits
     const { data: profile } = await supabaseAdmin

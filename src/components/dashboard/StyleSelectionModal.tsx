@@ -62,11 +62,9 @@ const CUSTOM_SCENES = ["City apartment", "Country cottage", "Beach house", "Indu
 const CUSTOM_LIGHTING = ["Morning light", "Golden hour", "Bright daylight", "Cozy evening"];
 const CUSTOM_FLOORING = ["Oak hardwood", "Dark walnut", "Concrete", "Carpet", "Marble"];
 
-const RESOLUTIONS = [
-  { id: "1k", label: "1K", credits: 1 },
-  { id: "2k", label: "2K", credits: 2 },
-  { id: "4k", label: "4K", credits: 3 },
-];
+// V2: All outputs are 4K, 1 credit
+const FIXED_RESOLUTION = "4k";
+const CREDIT_COST = 1;
 
 const ASPECT_RATIOS = [
   { id: "1:1", label: "1:1" },
@@ -104,7 +102,6 @@ export default function StyleSelectionModal({
   imageName,
 }: StyleSelectionModalProps) {
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
-  const [selectedResolution, setSelectedResolution] = useState("1k");
   const [selectedAspectRatio, setSelectedAspectRatio] = useState("1:1");
   const [selectedAngle, setSelectedAngle] = useState("eye_level");
   const [variations, setVariations] = useState(1);
@@ -112,7 +109,7 @@ export default function StyleSelectionModal({
   const [favorites, setFavorites] = useState<string[]>([]);
   const [recents, setRecents] = useState<string[]>([]);
 
-  const currentCredits = (RESOLUTIONS.find((r) => r.id === selectedResolution)?.credits || 1) * variations;
+  const currentCredits = CREDIT_COST * variations;
   const isCustom = selectedTemplate === "custom";
   const canGenerate =
     (selectedTemplate && !isCustom && creditsRemaining >= currentCredits && !loading) ||
@@ -168,7 +165,7 @@ export default function StyleSelectionModal({
 
     onGenerate(
       selectedTemplate,
-      selectedResolution,
+      FIXED_RESOLUTION,
       fullCustomPrompt,
       selectedAspectRatio,
       selectedAngle,
@@ -344,26 +341,8 @@ export default function StyleSelectionModal({
           </div>
         </div>
 
-        {/* Resolution + Aspect Ratio + Variations */}
-        <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div>
-            <p className="text-sm font-medium text-card-foreground mb-2">Resolution</p>
-            <div className="flex gap-2">
-              {RESOLUTIONS.map((r) => (
-                <button
-                  key={r.id}
-                  onClick={() => setSelectedResolution(r.id)}
-                  className={`flex-1 rounded-lg border-2 px-3 py-2.5 text-center transition-all ${
-                    selectedResolution === r.id ? "border-accent bg-accent/10 text-accent" : "border-border text-muted-foreground hover:border-accent/40"
-                  }`}
-                >
-                  <p className="text-sm font-bold">{r.label}</p>
-                  <p className="text-[11px] mt-0.5">{r.credits} cr</p>
-                </button>
-              ))}
-            </div>
-          </div>
-
+        {/* Aspect Ratio + Variations */}
+        <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <p className="text-sm font-medium text-card-foreground mb-2">Aspect Ratio</p>
             <div className="flex gap-2 flex-wrap">
@@ -397,6 +376,11 @@ export default function StyleSelectionModal({
               ))}
             </div>
           </div>
+        </div>
+
+        {/* 4K badge */}
+        <div className="mt-3">
+          <Badge variant="secondary" className="text-xs">All outputs are 4K (4096px)</Badge>
         </div>
 
         {/* Footer */}

@@ -75,6 +75,7 @@ export default function Dashboard() {
     beforeUrl: string;
     afterUrl: string;
     creditsRemaining: number;
+    jobId: string;
   } | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -181,7 +182,7 @@ export default function Dashboard() {
 
       if (data?.success && data.output_url) {
         const beforeUrl = imageUrls[selectedImage.id] || "";
-        setResultData({ beforeUrl, afterUrl: data.output_url, creditsRemaining: data.credits_remaining });
+        setResultData({ beforeUrl, afterUrl: data.output_url, creditsRemaining: data.credits_remaining, jobId: data.job_id });
         setProfile((prev) => prev ? { ...prev, credits_remaining: data.credits_remaining } : prev);
         setView("results");
       } else {
@@ -234,6 +235,9 @@ export default function Dashboard() {
             creditsRemaining={resultData.creditsRemaining}
             onTryAnother={handleTryAnother}
             onBackToDashboard={handleBackToDashboard}
+            jobId={resultData.jobId}
+            originalImageId={selectedImage?.id}
+            onCreditsChange={(c) => setProfile((p) => p ? { ...p, credits_remaining: c } : p)}
           />
         )}
 

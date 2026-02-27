@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Download, RefreshCw, ArrowLeft } from "lucide-react";
+import { Download, RefreshCw, ArrowLeft, Pencil } from "lucide-react";
 import BeforeAfterSlider from "./BeforeAfterSlider";
 import ExportModal from "./ExportModal";
+import ImageEditPanel from "./ImageEditPanel";
 
 interface ResultsViewProps {
   beforeUrl: string;
@@ -11,6 +12,9 @@ interface ResultsViewProps {
   creditsRemaining: number;
   onTryAnother: () => void;
   onBackToDashboard: () => void;
+  jobId?: string;
+  originalImageId?: string;
+  onCreditsChange?: (credits: number) => void;
 }
 
 export default function ResultsView({
@@ -19,8 +23,19 @@ export default function ResultsView({
   creditsRemaining,
   onTryAnother,
   onBackToDashboard,
+  jobId,
+  originalImageId,
+  onCreditsChange,
 }: ResultsViewProps) {
   const [showExport, setShowExport] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [currentAfterUrl, setCurrentAfterUrl] = useState(afterUrl);
+  const [credits, setCredits] = useState(creditsRemaining);
+
+  const handleCreditsChange = (c: number) => {
+    setCredits(c);
+    onCreditsChange?.(c);
+  };
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -33,13 +48,13 @@ export default function ResultsView({
           Back to Dashboard
         </button>
         <Badge variant="outline" className="px-3 py-1 text-sm">
-          {creditsRemaining} credits remaining
+          {credits} credits remaining
         </Badge>
       </div>
 
       <h2 className="text-xl font-bold text-foreground mb-4">Your Staged Result</h2>
 
-      <BeforeAfterSlider beforeSrc={beforeUrl} afterSrc={afterUrl} />
+      <BeforeAfterSlider beforeSrc={beforeUrl} afterSrc={currentAfterUrl} />
 
       <div className="mt-6 flex gap-3">
         <Button
@@ -49,16 +64,40 @@ export default function ResultsView({
           <Download className="mr-2 h-4 w-4" />
           Download Image
         </Button>
-        <Button variant="outline" onClick={onTryAnother} className="flex-1">
+        {jobId && originalImageId && (
+          <Button
+            variant={showEdit ? "secondary" : "outline"}
+            onClick={() => setShowEdit(!showEdit)}
+            className="flex-1"
+          >
+            <Pencil className="mr-2 h-4 w-4" />
+            {showEdit ? "Hide Editor" : "Edit Image"}
+          </Button>
+        )}
+        <Button variant="outline" onClick={onTryAnother}>
           <RefreshCw className="mr-2 h-4 w-4" />
-          Try Another Style
+          Try Another
         </Button>
       </div>
+
+      {/* Edit Panel */}
+      {showEdit && jobId && originalImageId && (
+        <div className="mt-6 p-4 rounded-xl border border-border bg-card">
+          <ImageEditPanel
+            jobId={jobId}
+            originalImageId={originalImageId}
+            currentImageUrl={currentAfterUrl}
+            creditsRemaining={credits}
+            onCreditsChange={handleCreditsChange}
+            onImageChange={setCurrentAfterUrl}
+          />
+        </div>
+      )}
 
       <ExportModal
         open={showExport}
         onClose={() => setShowExport(false)}
-        imageUrl={afterUrl}
+        imageUrl={currentAfterUrl}
         imageName={`furnistudio-staged-${Date.now()}`}
       />
     </div>
