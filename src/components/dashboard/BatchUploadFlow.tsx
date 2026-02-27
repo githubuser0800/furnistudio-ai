@@ -1,9 +1,8 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
 import {
   Upload,
@@ -13,8 +12,11 @@ import {
   CheckCircle,
   AlertCircle,
   Download,
-  ChevronDown,
   Check,
+  FolderPlus,
+  Pencil,
+  Clock,
+  Save,
 } from "lucide-react";
 import StyleSelectionModal from "./StyleSelectionModal";
 import ExportModal from "./ExportModal";
@@ -42,7 +44,13 @@ const SHOT_TYPE_LABELS = [
   { value: "Feature: Extended", group: "Feature" },
 ];
 
-const QUICK_LABELS = ["Full Product", "3/4 Angle", "Side View", "Close-up: Arm", "Close-up: Fabric", "Close-up: Detail"];
+const TEMPLATE_NAMES: Record<string, string> = {
+  scandinavian: "Scandinavian", contemporary_grey: "Contemporary Grey", cozy_british: "Cozy British",
+  luxury_penthouse: "Luxury Penthouse", minimalist_white: "Minimalist White", serene_bedroom: "Serene Bedroom",
+  boutique_hotel: "Boutique Hotel", light_airy: "Light & Airy", modern_dining: "Modern Dining",
+  rustic_farmhouse: "Rustic Farmhouse", modern_office: "Home Office", creative_studio: "Creative Studio",
+  white_background: "White Background", grey_studio: "Grey Studio", showroom_floor: "Showroom Floor", custom: "Custom",
+};
 
 interface StagedFile {
   file: File;
@@ -50,7 +58,6 @@ interface StagedFile {
   label: string;
   imageId?: string;
   uploaded: boolean;
-  detecting?: boolean;
   detectedLabel?: string;
 }
 
@@ -78,23 +85,38 @@ export default function BatchUploadFlow({
   const [files, setFiles] = useState<StagedFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [sameStyle, setSameStyle] = useState(true);
   const [showStyleModal, setShowStyleModal] = useState(false);
   const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
   const [processingIndex, setProcessingIndex] = useState(0);
   const [processingTotal, setProcessingTotal] = useState(0);
   const [processingStatus, setProcessingStatus] = useState("");
   const [exportImage, setExportImage] = useState<{ url: string; name: string } | null>(null);
+  const [batchExportMode, setBatchExportMode] = useState(false);
   const [detecting, setDetecting] = useState(false);
+  const [startTime, setStartTime] = useState<number | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const [selectedTemplateLabel, setSelectedTemplateLabel] = useState("");
+  const [savingToFolder, setSavingToFolder] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
+  // Timer for processing step
+  useEffect(() => {
+    if (step !== "processing" || !startTime) return;
+    const interval = setInterval(() => setElapsed(Math.floor((Date.now() - startTime) / 1000)), 1000);
+    return () => clearInterval(interval);
+  }, [step, startTime]);
+
+  const estimatedSeconds = processingTotal * 20;
+  const remainingSeconds = Math.max(0, estimatedSeconds - elapsed);
+  const formatTime = (s: number) => s < 60 ? `~${s}s remaining` : `~${Math.ceil(s / 60)}m remaining`;
+
   const handleFilesSelected = (fileList: FileList | null) => {
     if (!fileList) return;
-    const newFiles = Array.from(fileList).slice(0, 10 - files.length).map((file, i) => ({
+    const newFiles = Array.from(fileList).slice(0, 10 - files.length).map((file) => ({
       file,
       preview: URL.createObjectURL(file),
-      label: SHOT_TYPE_LABELS[files.length + i]?.value || "Full Product",
+      label: "Full Product",
       uploaded: false,
     }));
     setFiles((prev) => [...prev, ...newFiles].slice(0, 10));
@@ -153,23 +175,20 @@ export default function BatchUploadFlow({
       setStep("detect");
       setDetecting(true);
       try {
-        const { data, error } = await supabase.functions.invoke("detect-shot-type", {
+        const { data } = await supabase.functions.invoke("detect-shot-type", {
           body: { image_ids: uploadedIds },
         });
         if (data?.success && data.detections) {
           const detected = data.detections as Array<{ image_id: string; detected_type: string; confidence: string }>;
           const detectedFiles = updated.map((f) => {
             const det = detected.find((d) => d.image_id === f.imageId);
-            if (det) {
-              return { ...f, label: det.detected_type, detectedLabel: det.detected_type };
-            }
+            if (det) return { ...f, label: det.detected_type, detectedLabel: det.detected_type };
             return f;
           });
           setFiles(detectedFiles);
         }
       } catch (err) {
         console.error("Shot detection failed:", err);
-        // Continue without detection - user can still manually label
       }
       setDetecting(false);
     } else {
@@ -187,22 +206,17 @@ export default function BatchUploadFlow({
   ) => {
     setShowStyleModal(false);
     setStep("processing");
+    setStartTime(Date.now());
+    setElapsed(0);
+    setSelectedTemplateLabel(TEMPLATE_NAMES[templateId] || "Custom");
 
     const uploadedFiles = files.filter((f) => f.uploaded && f.imageId);
     setProcessingTotal(uploadedFiles.length);
 
-    // Create product set
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const templateNames: Record<string, string> = {
-      scandinavian: "Scandinavian", contemporary_grey: "Contemporary Grey", cozy_british: "Cozy British",
-      luxury_penthouse: "Luxury Penthouse", minimalist_white: "Minimalist White", serene_bedroom: "Serene Bedroom",
-      boutique_hotel: "Boutique Hotel", light_airy: "Light & Airy", modern_dining: "Modern Dining",
-      rustic_farmhouse: "Rustic Farmhouse", modern_office: "Home Office", creative_studio: "Creative Studio",
-      white_background: "White Background", grey_studio: "Grey Studio", showroom_floor: "Showroom Floor", custom: "Custom",
-    };
-    const setName = `${templateNames[templateId] || "Custom"} - ${new Date().toLocaleDateString("en-GB")}`;
+    const setName = `${TEMPLATE_NAMES[templateId] || "Custom"} - ${new Date().toLocaleDateString("en-GB")}`;
 
     const { data: setRecord } = await supabase.from("product_sets" as any).insert({
       user_id: user.id,
@@ -220,13 +234,12 @@ export default function BatchUploadFlow({
     for (let i = 0; i < uploadedFiles.length; i++) {
       setProcessingIndex(i + 1);
       const f = uploadedFiles[i];
+      const viewLabel = f.label || `image ${i + 1}`;
 
-      // Update status message
       if (i === 0) {
-        setProcessingStatus("Creating room environment...");
+        setProcessingStatus(`Creating room environment...`);
       } else {
-        const viewLabel = f.label || `image ${i + 1}`;
-        setProcessingStatus(`Adding ${viewLabel.toLowerCase()}...`);
+        setProcessingStatus(`Image ${i + 1} of ${uploadedFiles.length} — ${viewLabel}`);
       }
 
       try {
@@ -242,47 +255,20 @@ export default function BatchUploadFlow({
             label: f.label,
             batch_index: i,
             batch_total: uploadedFiles.length,
-            // Pass master background for images 2+
             ...(i > 0 && masterBackgroundPath ? { master_background_path: masterBackgroundPath } : {}),
           },
         });
 
         if (error || data?.error) {
-          results.push({
-            imageId: f.imageId!,
-            label: f.label,
-            beforeUrl: f.preview,
-            afterUrl: "",
-            jobId: "",
-            status: "failed",
-          });
+          results.push({ imageId: f.imageId!, label: f.label, beforeUrl: f.preview, afterUrl: "", jobId: "", status: "failed" });
         } else if (data?.success) {
           currentCredits = data.credits_remaining;
           onCreditsChange(currentCredits);
-
-          // Capture master background path from image 1
-          if (i === 0 && data.master_background_path) {
-            masterBackgroundPath = data.master_background_path;
-          }
-
-          results.push({
-            imageId: f.imageId!,
-            label: f.label,
-            beforeUrl: f.preview,
-            afterUrl: data.output_url,
-            jobId: data.job_id,
-            status: "completed",
-          });
+          if (i === 0 && data.master_background_path) masterBackgroundPath = data.master_background_path;
+          results.push({ imageId: f.imageId!, label: f.label, beforeUrl: f.preview, afterUrl: data.output_url, jobId: data.job_id, status: "completed" });
         }
       } catch {
-        results.push({
-          imageId: f.imageId!,
-          label: f.label,
-          beforeUrl: f.preview,
-          afterUrl: "",
-          jobId: "",
-          status: "failed",
-        });
+        results.push({ imageId: f.imageId!, label: f.label, beforeUrl: f.preview, afterUrl: "", jobId: "", status: "failed" });
       }
 
       setBatchResults([...results]);
@@ -307,110 +293,118 @@ export default function BatchUploadFlow({
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-      } catch {
-        // skip
-      }
+      } catch { /* skip */ }
     }
   };
 
-  // === UPLOAD STEP ===
+  const handleQuickDownload = async (r: BatchResult) => {
+    try {
+      const resp = await fetch(r.afterUrl);
+      const blob = await resp.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${r.label || "staged"}-4K.jpg`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch {
+      window.open(r.afterUrl, "_blank");
+    }
+  };
+
+  const handleSaveToFolder = async () => {
+    setSavingToFolder(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setSavingToFolder(false); return; }
+
+    const folderName = `${selectedTemplateLabel} - ${new Date().toLocaleDateString("en-GB")}`;
+    const { data: folder } = await (supabase as any).from("folders").insert({
+      user_id: user.id,
+      name: folderName,
+      color: "#6366f1",
+    }).select().single();
+
+    if (folder) {
+      const imageIds = files.filter((f) => f.uploaded && f.imageId).map((f) => f.imageId!);
+      const jobIds = batchResults.filter((r) => r.status === "completed" && r.jobId).map((r) => r.jobId);
+      await Promise.all([
+        imageIds.length > 0 ? (supabase as any).from("images").update({ folder_id: folder.id }).in("id", imageIds) : Promise.resolve(),
+        jobIds.length > 0 ? (supabase as any).from("jobs").update({ folder_id: folder.id }).in("id", jobIds) : Promise.resolve(),
+      ]);
+      toast({ title: "Saved to folder", description: `Created "${folderName}" in your library` });
+    }
+    setSavingToFolder(false);
+  };
+
+  // ========================
+  // STEP 1: UPLOAD
+  // ========================
   if (step === "upload") {
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-foreground">Batch Upload</h2>
-            <p className="text-sm text-muted-foreground">Upload up to 10 images to process with the same style</p>
-          </div>
-          <Badge variant="outline" className="px-3 py-1">{files.length}/10 images</Badge>
+        <div className="text-center">
+          <h2 className="text-xl font-bold text-foreground">Drop your product images here</h2>
+          <p className="text-sm text-muted-foreground mt-1">Upload up to 10 images · Auto-detects shot types</p>
         </div>
 
-        {files.length < 10 && (
-          <div
-            className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-border p-8 hover:border-accent/50 transition-colors"
-            onClick={() => fileInputRef.current?.click()}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => { e.preventDefault(); handleFilesSelected(e.dataTransfer.files); }}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              onChange={(e) => handleFilesSelected(e.target.files)}
-            />
-            <Upload className="mb-3 h-8 w-8 text-muted-foreground" />
-            <p className="text-sm font-medium text-foreground">Drop images or click to browse</p>
-            <p className="text-xs text-muted-foreground mt-1">JPG, PNG, WebP · up to 10 images</p>
-          </div>
-        )}
+        <div
+          className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-border p-10 hover:border-accent/50 transition-colors"
+          onClick={() => fileInputRef.current?.click()}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => { e.preventDefault(); handleFilesSelected(e.dataTransfer.files); }}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => handleFilesSelected(e.target.files)}
+          />
+          <Upload className="mb-3 h-10 w-10 text-muted-foreground" />
+          <p className="text-sm font-medium text-foreground">Click to browse or drag & drop</p>
+          <p className="text-xs text-muted-foreground mt-1">JPG, PNG, WebP · up to 10 images</p>
+        </div>
 
         {files.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-            {files.map((f, i) => (
-              <div key={i} className="relative rounded-xl border border-border bg-card overflow-hidden">
+          <>
+            <div className="flex items-center justify-between">
+              <Badge variant="outline" className="px-3 py-1">{files.length}/10 images</Badge>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+              {files.map((f, i) => (
+                <div key={i} className="relative rounded-xl border border-border bg-card overflow-hidden">
+                  <button
+                    onClick={() => removeFile(i)}
+                    className="absolute top-1.5 right-1.5 z-10 h-6 w-6 rounded-full bg-destructive/80 flex items-center justify-center hover:bg-destructive transition-colors"
+                  >
+                    <X className="h-3 w-3 text-destructive-foreground" />
+                  </button>
+                  <div className="aspect-square overflow-hidden">
+                    <img src={f.preview} alt={f.file.name} className="h-full w-full object-cover" />
+                  </div>
+                  <div className="p-2">
+                    <p className="text-[10px] text-muted-foreground truncate">{f.file.name}</p>
+                  </div>
+                </div>
+              ))}
+              {files.length < 10 && (
                 <button
-                  onClick={() => removeFile(i)}
-                  className="absolute top-1.5 right-1.5 z-10 h-6 w-6 rounded-full bg-destructive/80 flex items-center justify-center hover:bg-destructive transition-colors"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center aspect-square hover:border-accent/50 transition-colors"
                 >
-                  <X className="h-3 w-3 text-destructive-foreground" />
+                  <Plus className="h-6 w-6 text-muted-foreground mb-1" />
+                  <span className="text-xs text-muted-foreground">Add More</span>
                 </button>
-                <div className="aspect-square overflow-hidden">
-                  <img src={f.preview} alt={f.file.name} className="h-full w-full object-cover" />
-                </div>
-                <div className="p-2">
-                  <Select value={f.label} onValueChange={(val) => updateLabel(i, val)}>
-                    <SelectTrigger className="text-xs h-7">
-                      <SelectValue placeholder="Select shot type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SHOT_TYPE_LABELS.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value} className="text-xs">
-                          {opt.value}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-[10px] text-muted-foreground mt-1 truncate">{f.file.name}</p>
-                </div>
-              </div>
-            ))}
-
-            {files.length < 10 && (
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center aspect-square hover:border-accent/50 transition-colors"
-              >
-                <Plus className="h-6 w-6 text-muted-foreground mb-1" />
-                <span className="text-xs text-muted-foreground">Add More</span>
-              </button>
-            )}
-          </div>
-        )}
-
-        {files.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            <span className="text-xs text-muted-foreground mr-1">Quick labels:</span>
-            {QUICK_LABELS.map((label) => (
-              <button
-                key={label}
-                onClick={() => {
-                  const idx = files.findIndex((f) => !f.label || f.label === "Full Product");
-                  if (idx >= 0) updateLabel(idx, label);
-                }}
-                className="px-2 py-0.5 rounded-full border border-border text-[11px] text-foreground hover:bg-accent/10 transition-colors"
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+              )}
+            </div>
+          </>
         )}
 
         {uploading && (
           <div className="space-y-2">
             <div className="flex justify-between text-sm text-muted-foreground">
-              <span>Uploading...</span>
+              <span>Uploading & detecting shots...</span>
               <span>{Math.round(uploadProgress)}%</span>
             </div>
             <Progress value={uploadProgress} />
@@ -418,46 +412,33 @@ export default function BatchUploadFlow({
         )}
 
         {files.length > 0 && !uploading && (
-          <div className="flex items-center justify-between pt-2">
-            <div className="flex items-center gap-3">
-              <Switch checked={sameStyle} onCheckedChange={setSameStyle} />
-              <span className="text-sm text-foreground">Apply same style to all</span>
-            </div>
+          <div className="flex justify-end">
             <Button
               onClick={handleUploadAll}
               className="bg-accent text-accent-foreground hover:bg-accent/90"
             >
               <Upload className="mr-2 h-4 w-4" />
-              Upload & Choose Style ({files.length} images)
+              Upload {files.length} image{files.length > 1 ? "s" : ""}
             </Button>
           </div>
         )}
-
-        <StyleSelectionModal
-          open={showStyleModal}
-          onClose={() => { setShowStyleModal(false); setStep("upload"); }}
-          onGenerate={(templateId, resolution, customPrompt, aspectRatio, cameraAngle) => {
-            handleBatchGenerate(templateId, resolution, customPrompt, aspectRatio, cameraAngle);
-          }}
-          creditsRemaining={creditsRemaining}
-          loading={false}
-          imageName={`${files.filter((f) => f.uploaded).length} images (batch)`}
-        />
       </div>
     );
   }
 
-  // === DETECT STEP (Smart Shot Detection) ===
+  // ========================
+  // STEP 2: CONFIRM SHOT TYPES
+  // ========================
   if (step === "detect") {
     const uploadedFiles = files.filter((f) => f.uploaded && f.imageId);
     return (
       <div className="space-y-6">
         <div className="text-center">
           <h2 className="text-lg font-bold text-foreground">
-            {detecting ? "Detecting shot types..." : "Detected shot types:"}
+            {detecting ? "Detecting shot types..." : "Check shot types are correct:"}
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
-            {detecting ? "AI is analyzing your images" : "Confirm or change the detected labels, then continue"}
+            {detecting ? "AI is analyzing your images" : "Click a label to change it"}
           </p>
         </div>
 
@@ -469,54 +450,52 @@ export default function BatchUploadFlow({
 
         {!detecting && (
           <>
-            <div className="space-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
               {uploadedFiles.map((f, i) => (
-                <div key={i} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
-                  <div className="h-14 w-14 rounded-lg overflow-hidden bg-muted shrink-0">
+                <div key={i} className="rounded-xl border border-border bg-card overflow-hidden">
+                  <div className="aspect-square overflow-hidden relative">
                     <img src={f.preview} alt={f.file.name} className="h-full w-full object-cover" />
+                    {f.detectedLabel && f.label === f.detectedLabel && (
+                      <div className="absolute top-1.5 right-1.5">
+                        <div className="h-5 w-5 rounded-full bg-accent flex items-center justify-center">
+                          <Check className="h-3 w-3 text-accent-foreground" />
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-card-foreground truncate">{f.file.name}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Select value={f.label} onValueChange={(val) => updateLabel(files.indexOf(f), val)}>
-                        <SelectTrigger className="text-xs h-7 w-44">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {SHOT_TYPE_LABELS.map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value} className="text-xs">
-                              {opt.value}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {f.detectedLabel && f.label === f.detectedLabel && (
-                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                          <Check className="mr-0.5 h-2.5 w-2.5" /> Auto-detected
-                        </Badge>
-                      )}
-                      {f.detectedLabel && f.label !== f.detectedLabel && (
-                        <button
-                          onClick={() => updateLabel(files.indexOf(f), f.detectedLabel!)}
-                          className="text-[10px] text-accent hover:underline"
-                        >
-                          Reset to: {f.detectedLabel}
-                        </button>
-                      )}
-                    </div>
+                  <div className="p-2">
+                    <Select value={f.label} onValueChange={(val) => updateLabel(files.indexOf(f), val)}>
+                      <SelectTrigger className="text-xs h-7">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SHOT_TYPE_LABELS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                            {opt.value}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {f.detectedLabel && f.label !== f.detectedLabel && (
+                      <button
+                        onClick={() => updateLabel(files.indexOf(f), f.detectedLabel!)}
+                        className="mt-1 text-[10px] text-accent hover:underline"
+                      >
+                        Reset: {f.detectedLabel}
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-between pt-2">
               <Button variant="outline" onClick={() => setStep("upload")}>Back</Button>
               <Button
                 onClick={() => { setStep("style"); setShowStyleModal(true); }}
                 className="bg-accent text-accent-foreground hover:bg-accent/90"
               >
-                <Sparkles className="mr-2 h-4 w-4" />
-                Continue to Style Selection
+                Continue
               </Button>
             </div>
           </>
@@ -525,15 +504,17 @@ export default function BatchUploadFlow({
     );
   }
 
-  // === STYLE STEP ===
+  // ========================
+  // STEP 3: CHOOSE STYLE
+  // ========================
   if (step === "style") {
     return (
       <div className="space-y-6">
-        <div className="text-center py-8">
+        <div className="text-center py-6">
           <Sparkles className="h-10 w-10 text-accent mx-auto mb-3" />
-          <h2 className="text-lg font-bold text-foreground">Choose a style for your batch</h2>
+          <h2 className="text-lg font-bold text-foreground">Choose a style</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            {files.filter((f) => f.uploaded).length} images uploaded · Select a template to apply
+            {files.filter((f) => f.uploaded).length} images ready
           </p>
           <Button className="mt-4 bg-accent text-accent-foreground" onClick={() => setShowStyleModal(true)}>
             Open Style Selection
@@ -541,7 +522,7 @@ export default function BatchUploadFlow({
         </div>
         <StyleSelectionModal
           open={showStyleModal}
-          onClose={() => { setShowStyleModal(false); setStep("upload"); }}
+          onClose={() => { setShowStyleModal(false); setStep("detect"); }}
           onGenerate={(templateId, resolution, customPrompt, aspectRatio, cameraAngle) => {
             handleBatchGenerate(templateId, resolution, customPrompt, aspectRatio, cameraAngle);
           }}
@@ -553,74 +534,98 @@ export default function BatchUploadFlow({
     );
   }
 
-  // === PROCESSING STEP ===
+  // ========================
+  // STEP 5: PROGRESS
+  // ========================
   if (step === "processing") {
     const pct = processingTotal > 0 ? (processingIndex / processingTotal) * 100 : 0;
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
+      <div className="flex flex-col items-center justify-center py-12 text-center">
         <div className="relative mb-6">
           <div className="h-20 w-20 rounded-full border-4 border-accent/30 border-t-accent animate-spin" />
           <Sparkles className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-8 w-8 text-accent" />
         </div>
-        <h2 className="text-xl font-bold text-foreground mb-2">
-          Processing {processingIndex} of {processingTotal} images...
-        </h2>
+
+        <h2 className="text-lg font-bold text-foreground mb-1">Creating product set...</h2>
         <p className="text-sm font-medium text-accent mb-1">{processingStatus}</p>
-        <p className="text-muted-foreground mb-4">Each image takes 15–30 seconds</p>
-        <div className="w-64">
+        <p className="text-xs text-muted-foreground flex items-center gap-1">
+          <Clock className="h-3 w-3" /> {formatTime(remainingSeconds)}
+        </p>
+
+        <div className="w-72 mt-4">
           <Progress value={pct} />
+          <p className="text-xs text-muted-foreground mt-1.5">
+            Image {processingIndex} of {processingTotal}
+          </p>
         </div>
+
+        {/* Thumbnails appearing as completed */}
         <div className="mt-6 grid grid-cols-3 sm:grid-cols-5 gap-2 max-w-md">
-          {batchResults.map((r, i) => (
-            <div key={i} className="relative aspect-square rounded-lg overflow-hidden border border-border">
-              <img src={r.beforeUrl} alt={r.label} className="h-full w-full object-cover opacity-60" />
-              <div className="absolute inset-0 flex items-center justify-center">
-                {r.status === "completed" ? (
-                  <CheckCircle className="h-6 w-6 text-green-500" />
-                ) : r.status === "failed" ? (
-                  <AlertCircle className="h-6 w-6 text-destructive" />
-                ) : null}
+          {files.filter((f) => f.uploaded).map((f, i) => {
+            const result = batchResults[i];
+            return (
+              <div key={i} className="relative aspect-square rounded-lg overflow-hidden border border-border">
+                {result?.status === "completed" && result.afterUrl ? (
+                  <img src={result.afterUrl} alt={f.label} className="h-full w-full object-cover" />
+                ) : (
+                  <img src={f.preview} alt={f.label} className="h-full w-full object-cover opacity-40" />
+                )}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  {result?.status === "completed" && <CheckCircle className="h-5 w-5 text-accent drop-shadow-md" />}
+                  {result?.status === "failed" && <AlertCircle className="h-5 w-5 text-destructive" />}
+                  {!result && i < processingIndex && (
+                    <div className="h-5 w-5 rounded-full border-2 border-accent/40 border-t-accent animate-spin" />
+                  )}
+                </div>
+                <div className="absolute bottom-0 left-0 right-0 bg-background/70 px-1 py-0.5 text-center">
+                  <span className="text-[9px] text-foreground truncate block">{f.label}</span>
+                </div>
               </div>
-              <div className="absolute bottom-0 left-0 right-0 bg-background/70 px-1 py-0.5 text-center">
-                <span className="text-[9px] text-foreground truncate block">
-                  {i === 0 ? "Master" : r.label || `#${i + 1}`}
-                </span>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     );
   }
 
-  // === RESULTS STEP ===
+  // ========================
+  // STEP 6: RESULTS
+  // ========================
   const completedResults = batchResults.filter((r) => r.status === "completed");
   const failedCount = batchResults.filter((r) => r.status === "failed").length;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-lg font-bold text-foreground">Batch Results</h2>
+          <h2 className="text-lg font-bold text-foreground">
+            {completedResults.length} image{completedResults.length !== 1 ? "s" : ""} generated
+          </h2>
           <p className="text-sm text-muted-foreground">
-            {completedResults.length} completed{failedCount > 0 ? ` · ${failedCount} failed` : ""}
+            {selectedTemplateLabel}{failedCount > 0 ? ` · ${failedCount} failed` : ""}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {completedResults.length > 1 && (
-            <Button variant="outline" size="sm" onClick={handleDownloadAll}>
-              <Download className="mr-2 h-4 w-4" /> Download All
-            </Button>
+            <>
+              <Button variant="outline" size="sm" onClick={handleDownloadAll}>
+                <Download className="mr-1.5 h-4 w-4" /> Download All
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setBatchExportMode(true)}>
+                <Download className="mr-1.5 h-4 w-4" /> Export All...
+              </Button>
+            </>
           )}
-          <Button size="sm" onClick={onComplete}>
-            Back to Dashboard
+          <Button variant="outline" size="sm" onClick={handleSaveToFolder} disabled={savingToFolder}>
+            <FolderPlus className="mr-1.5 h-4 w-4" /> {savingToFolder ? "Saving..." : "Save to Folder"}
           </Button>
+          <Button size="sm" onClick={onComplete}>Done</Button>
         </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
         {batchResults.map((r, i) => (
-          <div key={i} className="rounded-xl border border-border bg-card overflow-hidden">
+          <div key={i} className="rounded-xl border border-border bg-card overflow-hidden group">
             <div className="aspect-square overflow-hidden relative">
               {r.status === "completed" && r.afterUrl ? (
                 <img src={r.afterUrl} alt={r.label} className="h-full w-full object-cover" />
@@ -633,7 +638,7 @@ export default function BatchUploadFlow({
               )}
               {r.status === "completed" && (
                 <div className="absolute top-2 right-2">
-                  <CheckCircle className="h-5 w-5 text-green-500 drop-shadow-md" />
+                  <CheckCircle className="h-5 w-5 text-accent drop-shadow-md" />
                 </div>
               )}
               {i === 0 && r.status === "completed" && (
@@ -644,16 +649,28 @@ export default function BatchUploadFlow({
             </div>
             <div className="p-3">
               <p className="text-sm font-medium text-card-foreground">{r.label || `Image ${i + 1}`}</p>
-              <p className="text-xs text-muted-foreground capitalize">{r.status}</p>
               {r.status === "completed" && r.afterUrl && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="mt-2 w-full text-xs"
-                  onClick={() => setExportImage({ url: r.afterUrl, name: r.label || `batch-${i + 1}` })}
-                >
-                  <Download className="mr-1 h-3 w-3" /> Download
-                </Button>
+                <div className="flex gap-1 mt-2">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="flex-1 text-xs h-8"
+                    onClick={() => handleQuickDownload(r)}
+                  >
+                    <Download className="mr-1 h-3 w-3" /> 4K JPEG
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="flex-1 text-xs h-8"
+                    onClick={() => setExportImage({ url: r.afterUrl, name: r.label || `batch-${i + 1}` })}
+                  >
+                    <Pencil className="mr-1 h-3 w-3" /> Export
+                  </Button>
+                </div>
+              )}
+              {r.status === "failed" && (
+                <p className="text-xs text-destructive mt-1">Generation failed</p>
               )}
             </div>
           </div>
@@ -666,6 +683,16 @@ export default function BatchUploadFlow({
           onClose={() => setExportImage(null)}
           imageUrl={exportImage.url}
           imageName={exportImage.name}
+        />
+      )}
+
+      {batchExportMode && (
+        <ExportModal
+          open={batchExportMode}
+          onClose={() => setBatchExportMode(false)}
+          imageUrl=""
+          imageName={selectedTemplateLabel || "batch"}
+          batchUrls={completedResults.map((r) => ({ url: r.afterUrl, name: r.label || "image" }))}
         />
       )}
     </div>
