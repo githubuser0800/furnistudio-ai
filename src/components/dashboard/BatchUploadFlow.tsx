@@ -14,6 +14,7 @@ import {
   AlertCircle,
   Download,
   ChevronDown,
+  Check,
 } from "lucide-react";
 import StyleSelectionModal from "./StyleSelectionModal";
 import ExportModal from "./ExportModal";
@@ -49,6 +50,8 @@ interface StagedFile {
   label: string;
   imageId?: string;
   uploaded: boolean;
+  detecting?: boolean;
+  detectedLabel?: string;
 }
 
 interface BatchResult {
@@ -71,7 +74,7 @@ export default function BatchUploadFlow({
   onComplete,
   onCreditsChange,
 }: BatchUploadFlowProps) {
-  const [step, setStep] = useState<"upload" | "style" | "processing" | "results">("upload");
+  const [step, setStep] = useState<"upload" | "detect" | "style" | "processing" | "results">("upload");
   const [files, setFiles] = useState<StagedFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -82,6 +85,7 @@ export default function BatchUploadFlow({
   const [processingTotal, setProcessingTotal] = useState(0);
   const [processingStatus, setProcessingStatus] = useState("");
   const [exportImage, setExportImage] = useState<{ url: string; name: string } | null>(null);
+  const [detecting, setDetecting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -142,8 +146,36 @@ export default function BatchUploadFlow({
     setFiles(updated);
     setUploading(false);
     setUploadProgress(100);
-    setStep("style");
-    setShowStyleModal(true);
+
+    // Smart shot detection
+    const uploadedIds = updated.filter((f) => f.uploaded && f.imageId).map((f) => f.imageId!);
+    if (uploadedIds.length > 0) {
+      setStep("detect");
+      setDetecting(true);
+      try {
+        const { data, error } = await supabase.functions.invoke("detect-shot-type", {
+          body: { image_ids: uploadedIds },
+        });
+        if (data?.success && data.detections) {
+          const detected = data.detections as Array<{ image_id: string; detected_type: string; confidence: string }>;
+          const detectedFiles = updated.map((f) => {
+            const det = detected.find((d) => d.image_id === f.imageId);
+            if (det) {
+              return { ...f, label: det.detected_type, detectedLabel: det.detected_type };
+            }
+            return f;
+          });
+          setFiles(detectedFiles);
+        }
+      } catch (err) {
+        console.error("Shot detection failed:", err);
+        // Continue without detection - user can still manually label
+      }
+      setDetecting(false);
+    } else {
+      setStep("style");
+      setShowStyleModal(true);
+    }
   };
 
   const handleBatchGenerate = async (
@@ -163,9 +195,18 @@ export default function BatchUploadFlow({
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    const templateNames: Record<string, string> = {
+      scandinavian: "Scandinavian", contemporary_grey: "Contemporary Grey", cozy_british: "Cozy British",
+      luxury_penthouse: "Luxury Penthouse", minimalist_white: "Minimalist White", serene_bedroom: "Serene Bedroom",
+      boutique_hotel: "Boutique Hotel", light_airy: "Light & Airy", modern_dining: "Modern Dining",
+      rustic_farmhouse: "Rustic Farmhouse", modern_office: "Home Office", creative_studio: "Creative Studio",
+      white_background: "White Background", grey_studio: "Grey Studio", showroom_floor: "Showroom Floor", custom: "Custom",
+    };
+    const setName = `${templateNames[templateId] || "Custom"} - ${new Date().toLocaleDateString("en-GB")}`;
+
     const { data: setRecord } = await supabase.from("product_sets" as any).insert({
       user_id: user.id,
-      name: `Product Set - ${uploadedFiles.length} images`,
+      name: setName,
       template_id: templateId,
       resolution,
       image_count: uploadedFiles.length,
@@ -402,6 +443,84 @@ export default function BatchUploadFlow({
           loading={false}
           imageName={`${files.filter((f) => f.uploaded).length} images (batch)`}
         />
+      </div>
+    );
+  }
+
+  // === DETECT STEP (Smart Shot Detection) ===
+  if (step === "detect") {
+    const uploadedFiles = files.filter((f) => f.uploaded && f.imageId);
+    return (
+      <div className="space-y-6">
+        <div className="text-center">
+          <h2 className="text-lg font-bold text-foreground">
+            {detecting ? "Detecting shot types..." : "Detected shot types:"}
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            {detecting ? "AI is analyzing your images" : "Confirm or change the detected labels, then continue"}
+          </p>
+        </div>
+
+        {detecting && (
+          <div className="flex justify-center py-8">
+            <div className="h-12 w-12 rounded-full border-4 border-accent/30 border-t-accent animate-spin" />
+          </div>
+        )}
+
+        {!detecting && (
+          <>
+            <div className="space-y-3">
+              {uploadedFiles.map((f, i) => (
+                <div key={i} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
+                  <div className="h-14 w-14 rounded-lg overflow-hidden bg-muted shrink-0">
+                    <img src={f.preview} alt={f.file.name} className="h-full w-full object-cover" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-card-foreground truncate">{f.file.name}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Select value={f.label} onValueChange={(val) => updateLabel(files.indexOf(f), val)}>
+                        <SelectTrigger className="text-xs h-7 w-44">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {SHOT_TYPE_LABELS.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                              {opt.value}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {f.detectedLabel && f.label === f.detectedLabel && (
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                          <Check className="mr-0.5 h-2.5 w-2.5" /> Auto-detected
+                        </Badge>
+                      )}
+                      {f.detectedLabel && f.label !== f.detectedLabel && (
+                        <button
+                          onClick={() => updateLabel(files.indexOf(f), f.detectedLabel!)}
+                          className="text-[10px] text-accent hover:underline"
+                        >
+                          Reset to: {f.detectedLabel}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setStep("upload")}>Back</Button>
+              <Button
+                onClick={() => { setStep("style"); setShowStyleModal(true); }}
+                className="bg-accent text-accent-foreground hover:bg-accent/90"
+              >
+                <Sparkles className="mr-2 h-4 w-4" />
+                Continue to Style Selection
+              </Button>
+            </div>
+          </>
+        )}
       </div>
     );
   }

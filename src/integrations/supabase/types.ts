@@ -14,10 +14,49 @@ export type Database = {
   }
   public: {
     Tables: {
+      folders: {
+        Row: {
+          color: string | null
+          created_at: string
+          id: string
+          name: string
+          parent_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          parent_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          parent_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "folders_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "folders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       images: {
         Row: {
           created_at: string
           filename: string
+          folder_id: string | null
           id: string
           label: string | null
           original_url: string | null
@@ -26,6 +65,7 @@ export type Database = {
         Insert: {
           created_at?: string
           filename: string
+          folder_id?: string | null
           id?: string
           label?: string | null
           original_url?: string | null
@@ -34,18 +74,28 @@ export type Database = {
         Update: {
           created_at?: string
           filename?: string
+          folder_id?: string | null
           id?: string
           label?: string | null
           original_url?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "images_folder_id_fkey"
+            columns: ["folder_id"]
+            isOneToOne: false
+            referencedRelation: "folders"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       jobs: {
         Row: {
           camera_angle: string | null
           created_at: string
           credits_used: number
+          folder_id: string | null
           id: string
           image_id: string | null
           label: string | null
@@ -60,6 +110,7 @@ export type Database = {
           camera_angle?: string | null
           created_at?: string
           credits_used?: number
+          folder_id?: string | null
           id?: string
           image_id?: string | null
           label?: string | null
@@ -74,6 +125,7 @@ export type Database = {
           camera_angle?: string | null
           created_at?: string
           credits_used?: number
+          folder_id?: string | null
           id?: string
           image_id?: string | null
           label?: string | null
@@ -85,6 +137,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "jobs_folder_id_fkey"
+            columns: ["folder_id"]
+            isOneToOne: false
+            referencedRelation: "folders"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "jobs_image_id_fkey"
             columns: ["image_id"]
@@ -104,6 +163,7 @@ export type Database = {
       product_sets: {
         Row: {
           created_at: string
+          folder_id: string | null
           id: string
           image_count: number
           name: string
@@ -115,6 +175,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          folder_id?: string | null
           id?: string
           image_count?: number
           name?: string
@@ -126,6 +187,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          folder_id?: string | null
           id?: string
           image_count?: number
           name?: string
@@ -135,7 +197,15 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "product_sets_folder_id_fkey"
+            columns: ["folder_id"]
+            isOneToOne: false
+            referencedRelation: "folders"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
