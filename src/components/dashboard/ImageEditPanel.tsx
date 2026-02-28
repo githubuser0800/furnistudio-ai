@@ -4,36 +4,42 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Sun,
-  Snowflake,
-  SunDim,
-  Moon,
-  Leaf,
-  Trash2,
-  ZoomIn,
-  ZoomOut,
-  Aperture,
-  Focus,
   Undo2,
   RotateCcw,
   Sparkles,
-  Send,
-  ChevronLeft,
   ChevronRight,
 } from "lucide-react";
 
-const QUICK_EDITS = [
-  { label: "Warmer lighting", icon: Sun, instruction: "Make the lighting warmer with more golden/amber tones" },
-  { label: "Cooler lighting", icon: Snowflake, instruction: "Make the lighting cooler with more blue/white tones" },
-  { label: "Brighter", icon: SunDim, instruction: "Make the overall scene brighter and more illuminated" },
-  { label: "Darker/Moodier", icon: Moon, instruction: "Make the scene darker and moodier with more dramatic shadows" },
-  { label: "Add plants", icon: Leaf, instruction: "Add green plants to the scene - a large potted plant and a smaller one" },
-  { label: "Remove props", icon: Trash2, instruction: "Remove all props and decorative items from the scene, keep only the furniture and the room" },
-  { label: "Zoom in", icon: ZoomIn, instruction: "Zoom in closer to the furniture piece, making it fill more of the frame" },
-  { label: "Zoom out", icon: ZoomOut, instruction: "Zoom out to show more of the room environment around the furniture" },
-  { label: "More background blur", icon: Aperture, instruction: "Increase the background blur (shallower depth of field) to isolate the furniture more" },
-  { label: "Sharper background", icon: Focus, instruction: "Make the background sharper and more in focus throughout the scene" },
+const EDIT_GROUPS = [
+  {
+    label: "Lighting",
+    options: [
+      { id: "warmer", label: "Warmer", instruction: "Make the lighting warmer with more golden/amber tones" },
+      { id: "cooler", label: "Cooler", instruction: "Make the lighting cooler with more blue/white tones" },
+      { id: "brighter", label: "Brighter", instruction: "Make the overall scene brighter and more illuminated" },
+      { id: "darker", label: "Darker", instruction: "Make the scene darker and moodier with more dramatic shadows" },
+    ],
+  },
+  {
+    label: "Environment",
+    options: [
+      { id: "plants", label: "Add plants", instruction: "Add green plants to the scene" },
+      { id: "lamp", label: "Add lamp", instruction: "Add a stylish floor lamp to the scene" },
+      { id: "rug", label: "Add rug", instruction: "Add a textured area rug beneath the furniture" },
+      { id: "remove_props", label: "Remove props", instruction: "Remove all props and decorative items, keep only the furniture and the room" },
+    ],
+  },
+  {
+    label: "Camera",
+    options: [
+      { id: "zoom_in", label: "Zoom in", instruction: "Zoom in closer to the furniture piece" },
+      { id: "zoom_out", label: "Zoom out", instruction: "Zoom out to show more of the room" },
+      { id: "more_blur", label: "More blur", instruction: "Increase the background blur to isolate the furniture more" },
+      { id: "sharper", label: "Sharper", instruction: "Make the background sharper and more in focus" },
+    ],
+  },
 ];
 
 interface EditHistoryEntry {
@@ -63,15 +69,37 @@ export default function ImageEditPanel({
     { url: currentImageUrl, instruction: "Original generation", path: "" },
   ]);
   const [historyIndex, setHistoryIndex] = useState(0);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [customEdit, setCustomEdit] = useState("");
   const [editing, setEditing] = useState(false);
   const { toast } = useToast();
 
-  const currentEntry = history[historyIndex];
-  const canUndo = historyIndex > 0;
-  const canRedo = historyIndex < history.length - 1;
   const editCount = history.length - 1;
   const maxEdits = 10;
+  const canUndo = historyIndex > 0;
+  const canRedo = historyIndex < history.length - 1;
+
+  const toggleOption = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  // Build combined instruction from selections + custom text
+  const selectedInstructions = EDIT_GROUPS.flatMap((g) =>
+    g.options.filter((o) => selected.has(o.id))
+  );
+  const summaryParts = selectedInstructions.map((o) => o.label);
+  if (customEdit.trim()) summaryParts.push(`Custom: ${customEdit.trim().slice(0, 60)}${customEdit.trim().length > 60 ? "…" : ""}`);
+  const hasEdits = summaryParts.length > 0;
+
+  const buildPrompt = (): string => {
+    const parts = selectedInstructions.map((o) => o.instruction);
+    if (customEdit.trim()) parts.push(customEdit.trim());
+    return parts.join(". ") + ".";
+  };
 
   const performEdit = async (instruction: string) => {
     if (editCount >= maxEdits) {
@@ -85,7 +113,6 @@ export default function ImageEditPanel({
 
     setEditing(true);
     try {
-      // Use the current image's job_id - for edits we pass the original job
       const { data, error } = await supabase.functions.invoke("edit-image", {
         body: {
           job_id: jobId,
@@ -98,7 +125,6 @@ export default function ImageEditPanel({
       if (data?.error) throw new Error(data.error);
 
       if (data?.success && data.output_url) {
-        // Truncate any redo history and add new entry
         const newHistory = [
           ...history.slice(0, historyIndex + 1),
           { url: data.output_url, instruction, path: data.output_path },
@@ -107,12 +133,20 @@ export default function ImageEditPanel({
         setHistoryIndex(newHistory.length - 1);
         onImageChange(data.output_url);
         onCreditsChange(data.credits_remaining);
+        // Clear selections after successful edit
+        setSelected(new Set());
+        setCustomEdit("");
       }
     } catch (err: any) {
       toast({ title: "Edit failed", description: err.message, variant: "destructive" });
     } finally {
       setEditing(false);
     }
+  };
+
+  const handleApply = () => {
+    if (!hasEdits) return;
+    performEdit(buildPrompt());
   };
 
   const handleUndo = () => {
@@ -132,12 +166,6 @@ export default function ImageEditPanel({
   const handleReset = () => {
     setHistoryIndex(0);
     onImageChange(history[0].url);
-  };
-
-  const handleCustomSubmit = () => {
-    if (!customEdit.trim()) return;
-    performEdit(customEdit.trim());
-    setCustomEdit("");
   };
 
   return (
@@ -182,59 +210,84 @@ export default function ImageEditPanel({
         </div>
       )}
 
-      {/* Quick Edit Buttons */}
-      <div>
-        <p className="text-xs font-medium text-muted-foreground mb-2">Quick Edits</p>
-        <div className="flex flex-wrap gap-1.5">
-          {QUICK_EDITS.map((edit) => {
-            const Icon = edit.icon;
-            return (
-              <button
-                key={edit.label}
-                onClick={() => performEdit(edit.instruction)}
-                disabled={editing || editCount >= maxEdits}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border text-xs text-foreground hover:border-accent/50 hover:bg-accent/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Icon className="h-3 w-3 text-muted-foreground" />
-                {edit.label}
-              </button>
-            );
-          })}
-        </div>
+      {/* Checkbox Groups */}
+      <div className="space-y-3">
+        {EDIT_GROUPS.map((group) => (
+          <div key={group.label}>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+              {group.label}
+            </p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+              {group.options.map((option) => (
+                <label
+                  key={option.id}
+                  className="flex items-center gap-2 cursor-pointer group"
+                >
+                  <Checkbox
+                    checked={selected.has(option.id)}
+                    onCheckedChange={() => toggleOption(option.id)}
+                    disabled={editing || editCount >= maxEdits}
+                  />
+                  <span className="text-sm text-foreground group-hover:text-accent transition-colors">
+                    {option.label}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
 
-      {/* Custom Edit Input */}
+      {/* Custom Text Input */}
       <div>
-        <p className="text-xs font-medium text-muted-foreground mb-2">Custom Edit</p>
-        <div className="flex gap-2">
-          <Textarea
-            value={customEdit}
-            onChange={(e) => setCustomEdit(e.target.value.slice(0, 300))}
-            placeholder="e.g. Make the walls lighter grey, add a floor lamp on the right..."
-            className="min-h-[60px] text-sm flex-1"
-            disabled={editing || editCount >= maxEdits}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleCustomSubmit();
-              }
-            }}
-          />
-          <Button
-            onClick={handleCustomSubmit}
-            disabled={!customEdit.trim() || editing || editCount >= maxEdits}
-            className="bg-accent text-accent-foreground hover:bg-accent/90 self-end"
-            size="sm"
-          >
-            {editing ? (
-              <Sparkles className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-          </Button>
-        </div>
-        <p className="text-[10px] text-muted-foreground mt-1">{customEdit.length}/300</p>
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+          Custom Instructions
+        </p>
+        <Textarea
+          value={customEdit}
+          onChange={(e) => setCustomEdit(e.target.value.slice(0, 500))}
+          placeholder="e.g., Change walls to light blue, add window on left"
+          className="min-h-[80px] text-sm"
+          disabled={editing || editCount >= maxEdits}
+        />
+        <p className="text-[10px] text-muted-foreground mt-1 text-right">{customEdit.length}/500</p>
       </div>
+
+      {/* Summary */}
+      {hasEdits && (
+        <div className="rounded-lg border border-border bg-muted/30 p-2.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+            Edits to apply
+          </p>
+          <p className="text-xs text-foreground leading-relaxed">
+            {summaryParts.map((s, i) => (
+              <span key={i}>
+                {i > 0 && <span className="text-muted-foreground"> · </span>}
+                {s}
+              </span>
+            ))}
+          </p>
+        </div>
+      )}
+
+      {/* Apply Button */}
+      <Button
+        onClick={handleApply}
+        disabled={!hasEdits || editing || editCount >= maxEdits || creditsRemaining < 1}
+        className="w-full bg-accent text-accent-foreground hover:bg-accent/90 min-h-[44px]"
+      >
+        {editing ? (
+          <>
+            <div className="h-4 w-4 rounded-full border-2 border-accent-foreground/30 border-t-accent-foreground animate-spin mr-2" />
+            Applying edits...
+          </>
+        ) : (
+          <>
+            <Sparkles className="h-4 w-4 mr-2" />
+            Apply All Edits — 0.5 credits
+          </>
+        )}
+      </Button>
 
       {/* Editing Overlay */}
       {editing && (
