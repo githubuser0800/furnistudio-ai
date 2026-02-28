@@ -848,13 +848,16 @@ serve(async (req) => {
           ],
           modalities: ["image", "text"],
           temperature: 0.3,
+          imageConfig: {
+            imageSize: "4K",
+            aspectRatio: aspectRatio || "1:1",
+          },
         }),
       }
     );
 
     console.log("=== RESOLUTION AUDIT ===");
-    console.log("1. REQUESTED: model=google/gemini-3-pro-image-preview, no explicit size param (model uses native output resolution)");
-    console.log("   Prompt includes: 'Generate at the MAXIMUM possible resolution'");
+    console.log("1. REQUESTED: model=google/gemini-3-pro-image-preview, imageConfig.imageSize='4K', aspectRatio='" + (aspectRatio || "1:1") + "'");
 
     if (!aiResponse.ok) {
       const errText = await aiResponse.text();

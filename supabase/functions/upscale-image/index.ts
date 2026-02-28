@@ -97,6 +97,9 @@ serve(async (req) => {
           }],
           modalities: ["image", "text"],
           temperature: 0.3,
+          imageConfig: {
+            imageSize: "4K",
+          },
         }),
       }
     );

@@ -144,6 +144,9 @@ serve(async (req) => {
           messages: [{ role: "user", content: messageContent }],
           modalities: ["image", "text"],
           temperature: 0.3,
+          imageConfig: {
+            imageSize: "4K",
+          },
         }),
       }
     );
