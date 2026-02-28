@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Sparkles, Check, Star, Pen, Heart, Clock, Camera } from "lucide-react";
+import { Sparkles, Check, Star, Pen, Heart, Clock, Camera, ChevronDown, ChevronRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 import scandinavianImg from "@/assets/templates/scandinavian.jpg";
@@ -108,6 +108,7 @@ export default function StyleSelectionModal({
   const [customPrompt, setCustomPrompt] = useState("");
   const [favorites, setFavorites] = useState<string[]>([]);
   const [recents, setRecents] = useState<string[]>([]);
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
   const currentCredits = CREDIT_COST * variations;
   const isCustom = selectedTemplate === "custom";
@@ -176,6 +177,16 @@ export default function StyleSelectionModal({
   const favoriteTemplates = ALL_TEMPLATES.filter((t) => favorites.includes(t.id));
   const recentTemplates = ALL_TEMPLATES.filter((t) => recents.includes(t.id));
 
+  const QUICK_PICKS = ALL_TEMPLATES.filter((t) => ["scandinavian", "white_background", "showroom_floor"].includes(t.id));
+
+  const toggleCategory = (label: string) => {
+    setExpandedCategories((prev) => {
+      const next = new Set(prev);
+      next.has(label) ? next.delete(label) : next.add(label);
+      return next;
+    });
+  };
+
   const renderTemplateCard = (t: typeof ALL_TEMPLATES[0]) => (
     <button
       key={t.id}
@@ -221,37 +232,67 @@ export default function StyleSelectionModal({
         </DialogHeader>
 
         <div className="mt-4 space-y-5">
+          {/* Quick Picks - always visible */}
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-accent mb-2 flex items-center gap-1">
+              <Star className="h-3 w-3 fill-accent" /> Quick Picks
+            </h3>
+            <div className="grid grid-cols-3 gap-2.5">
+              {QUICK_PICKS.map(renderTemplateCard)}
+            </div>
+          </div>
+
           {/* Favorites */}
           {favoriteTemplates.length > 0 && (
             <div>
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-accent mb-2 flex items-center gap-1">
+              <button
+                onClick={() => toggleCategory("Favorites")}
+                className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-accent mb-2 hover:opacity-80 transition-opacity"
+              >
+                {expandedCategories.has("Favorites") ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
                 <Heart className="h-3 w-3 fill-accent" /> Favorites
-              </h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5">
-                {favoriteTemplates.map(renderTemplateCard)}
-              </div>
+              </button>
+              {expandedCategories.has("Favorites") && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5">
+                  {favoriteTemplates.map(renderTemplateCard)}
+                </div>
+              )}
             </div>
           )}
 
           {/* Recently Used */}
           {recentTemplates.length > 0 && (
             <div>
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1">
-                <Clock className="h-3 w-3" /> Recently Used
-              </h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5">
-                {recentTemplates.map(renderTemplateCard)}
-              </div>
+              <button
+                onClick={() => toggleCategory("Recent")}
+                className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 hover:text-foreground transition-colors"
+              >
+                {expandedCategories.has("Recent") ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                <Clock className="h-3 w-3" /> Recent
+              </button>
+              {expandedCategories.has("Recent") && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5">
+                  {recentTemplates.map(renderTemplateCard)}
+                </div>
+              )}
             </div>
           )}
 
-          {/* Template Grid by Category */}
+          {/* Template Grid by Category - Collapsible */}
           {CATEGORIES.map((cat) => (
             <div key={cat.label}>
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">{cat.label}</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5">
-                {cat.templates.map(renderTemplateCard)}
-              </div>
+              <button
+                onClick={() => toggleCategory(cat.label)}
+                className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 hover:text-foreground transition-colors"
+              >
+                {expandedCategories.has(cat.label) ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                {cat.label} ({cat.templates.length})
+              </button>
+              {expandedCategories.has(cat.label) && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5">
+                  {cat.templates.map(renderTemplateCard)}
+                </div>
+              )}
             </div>
           ))}
 
@@ -384,19 +425,22 @@ export default function StyleSelectionModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between mt-6 pt-4 border-t border-border">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mt-6 pt-4 border-t border-border gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <Badge variant="outline" className="text-sm px-3 py-1">
-              Cost: {currentCredits} credit{currentCredits > 1 ? "s" : ""}
+              {currentCredits} credit{currentCredits > 1 ? "s" : ""}
             </Badge>
             <span className="text-sm text-muted-foreground">{creditsRemaining} remaining</span>
+            {creditsRemaining < currentCredits && (
+              <span className="text-xs text-destructive font-medium">Not enough credits</span>
+            )}
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose} disabled={loading}>Cancel</Button>
+            <Button variant="outline" onClick={onClose} disabled={loading} className="min-h-[44px]">Cancel</Button>
             <Button
               onClick={handleGenerate}
               disabled={!canGenerate}
-              className="bg-accent text-accent-foreground hover:bg-accent/90"
+              className="bg-accent text-accent-foreground hover:bg-accent/90 min-h-[44px]"
             >
               <Sparkles className="mr-2 h-4 w-4" />
               {loading ? "Generating..." : variations > 1 ? `Generate ${variations} Variations` : "Generate"}
