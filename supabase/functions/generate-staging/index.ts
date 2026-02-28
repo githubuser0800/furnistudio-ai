@@ -852,6 +852,10 @@ serve(async (req) => {
       }
     );
 
+    console.log("=== RESOLUTION AUDIT ===");
+    console.log("1. REQUESTED: model=google/gemini-3-pro-image-preview, no explicit size param (model uses native output resolution)");
+    console.log("   Prompt includes: 'Generate at the MAXIMUM possible resolution'");
+
     if (!aiResponse.ok) {
       const errText = await aiResponse.text();
       console.error("AI error:", aiResponse.status, errText);
@@ -872,8 +876,12 @@ serve(async (req) => {
       throw new Error("AI generation failed");
     }
 
+    console.log("2. API RESPONSE status:", aiResponse.status);
+    console.log("   Response content-type:", aiResponse.headers.get("content-type"));
+
     const aiResult = await aiResponse.json();
-    console.log("AI response received, parsing image...", JSON.stringify(aiResult).substring(0, 200));
+    console.log("AI response keys:", Object.keys(aiResult));
+    console.log("AI response preview:", JSON.stringify(aiResult).substring(0, 300));
 
     // Extract generated image from response
     let generatedBase64: string | null = null;
@@ -933,8 +941,34 @@ serve(async (req) => {
       outputBytes[i] = binaryString.charCodeAt(i);
     }
 
-    // Log actual image size for debugging resolution
-    console.log("Output image size:", outputBytes.length, "bytes (~", Math.round(outputBytes.length / 1024), "KB)");
+    // Log actual image dimensions by parsing PNG/JPEG header
+    console.log("3. IMAGE RETURNED by API:");
+    console.log("   MIME type:", generatedMimeType);
+    console.log("   Base64 length:", generatedBase64.length, "chars");
+    console.log("   Decoded size:", outputBytes.length, "bytes (~", Math.round(outputBytes.length / 1024), "KB)");
+    
+    // Parse actual pixel dimensions from image header
+    if (outputBytes[0] === 0x89 && outputBytes[1] === 0x50) {
+      // PNG: width at bytes 16-19, height at bytes 20-23 (big-endian)
+      const width = (outputBytes[16] << 24) | (outputBytes[17] << 16) | (outputBytes[18] << 8) | outputBytes[19];
+      const height = (outputBytes[20] << 24) | (outputBytes[21] << 16) | (outputBytes[22] << 8) | outputBytes[23];
+      console.log("   ACTUAL PIXEL DIMENSIONS (PNG):", width, "x", height);
+    } else if (outputBytes[0] === 0xFF && outputBytes[1] === 0xD8) {
+      // JPEG: scan for SOF0 marker (0xFF 0xC0) to find dimensions
+      let jpegWidth = 0, jpegHeight = 0;
+      for (let i = 2; i < outputBytes.length - 8; i++) {
+        if (outputBytes[i] === 0xFF && (outputBytes[i+1] === 0xC0 || outputBytes[i+1] === 0xC2)) {
+          jpegHeight = (outputBytes[i+5] << 8) | outputBytes[i+6];
+          jpegWidth = (outputBytes[i+7] << 8) | outputBytes[i+8];
+          break;
+        }
+      }
+      console.log("   ACTUAL PIXEL DIMENSIONS (JPEG):", jpegWidth, "x", jpegHeight);
+    } else {
+      console.log("   Unknown image format, first bytes:", outputBytes[0], outputBytes[1]);
+    }
+
+    console.log("4. SAVING TO STORAGE as:", outputPath, "contentType: image/png (no compression/downscaling applied)");
 
     const { error: uploadErr } = await supabaseAdmin.storage
       .from("furniture-images")
