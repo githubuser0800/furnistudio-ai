@@ -766,102 +766,61 @@ serve(async (req) => {
       masterMimeType = master_background_path.endsWith(".png") ? "image/png" : "image/jpeg";
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("AI service not configured");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not configured");
 
     console.log(
-      "Calling AI gateway |",
+      "Calling DIRECT Gemini API |",
       isSubsequentInBatch ? `EDIT into master (${batch_index + 1}/${batch_total})` : isFirstInBatch ? `MASTER generation (1/${batch_total})` : "single",
       "| template:", template_id,
       "| prompt length:", prompt.length
     );
 
-    // ── Build API message content ──
-    let messageContent: Array<Record<string, unknown>>;
+    // ── Build Gemini API parts ──
+    let parts: Array<Record<string, unknown>>;
 
     if (isSubsequentInBatch && base64Master) {
       // ═══ IMAGES 2+: Two images (master + product) with editing prompt ═══
-      messageContent = [
-        // Editing instruction
-        {
-          type: "text",
-          text: "EDITING TASK: Image 1 is the MASTER BACKGROUND room to preserve exactly. Image 2 is the PRODUCT to place into it. Keep the room pixel-perfect identical. Only replace the furniture.",
-        },
-        // IMAGE 1: Master background
-        {
-          type: "image_url",
-          image_url: {
-            url: `data:${masterMimeType};base64,${base64Master}`,
-          },
-        },
-        // IMAGE 2: Product reference
-        {
-          type: "image_url",
-          image_url: {
-            url: `data:${productMimeType};base64,${base64Product}`,
-          },
-        },
-        // Full editing prompt with view-specific instructions
-        {
-          type: "text",
-          text: prompt,
-        },
+      parts = [
+        { text: "EDITING TASK: Image 1 is the MASTER BACKGROUND room to preserve exactly. Image 2 is the PRODUCT to place into it. Keep the room pixel-perfect identical. Only replace the furniture." },
+        { inlineData: { mimeType: masterMimeType, data: base64Master } },
+        { inlineData: { mimeType: productMimeType, data: base64Product } },
+        { text: prompt },
       ];
     } else {
       // ═══ IMAGE 1 or SINGLE: Standard generation ═══
-      messageContent = [
-        // STEP 1: Preservation instruction FIRST
-        {
-          type: "text",
-          text: `${PRODUCT_PRESERVATION}\n\nCRITICAL: Preserve this EXACT furniture product unchanged. Only place it in a new environment.`,
-        },
-        // STEP 2: The furniture image as PRIMARY reference
-        {
-          type: "image_url",
-          image_url: {
-            url: `data:${productMimeType};base64,${base64Product}`,
-          },
-        },
-        // STEP 3: The full C.S.S.T. room/scene prompt
-        {
-          type: "text",
-          text: prompt,
-        },
+      parts = [
+        { text: `${PRODUCT_PRESERVATION}\n\nCRITICAL: Preserve this EXACT furniture product unchanged. Only place it in a new environment.` },
+        { inlineData: { mimeType: productMimeType, data: base64Product } },
+        { text: prompt },
       ];
     }
 
+    const geminiModel = "gemini-2.0-flash-exp-image-generation";
     const aiResponse = await fetch(
-      "https://ai.gateway.lovable.dev/v1/chat/completions",
+      `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "google/gemini-3-pro-image-preview",
-          messages: [
-            {
-              role: "user",
-              content: messageContent,
-            },
-          ],
-          modalities: ["image", "text"],
-          temperature: 0.3,
+          contents: [{ parts }],
+          generationConfig: {
+            temperature: 0.3,
+            responseModalities: ["TEXT", "IMAGE"],
+          },
           imageConfig: {
             imageSize: "4K",
-            aspectRatio: aspectRatio || "1:1",
           },
         }),
       }
     );
 
     console.log("=== RESOLUTION AUDIT ===");
-    console.log("1. REQUESTED: model=google/gemini-3-pro-image-preview, imageConfig.imageSize='4K', aspectRatio='" + (aspectRatio || "1:1") + "'");
+    console.log("1. REQUESTED: model=" + geminiModel + ", imageConfig.imageSize='4K'");
 
     if (!aiResponse.ok) {
       const errText = await aiResponse.text();
-      console.error("AI error:", aiResponse.status, errText);
+      console.error("Gemini API error:", aiResponse.status, errText);
       await supabaseAdmin.from("jobs").update({ status: "failed" }).eq("id", job.id);
 
       if (aiResponse.status === 429) {
@@ -876,62 +835,32 @@ serve(async (req) => {
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      throw new Error("AI generation failed");
+      throw new Error("AI generation failed: " + errText.substring(0, 200));
     }
 
     console.log("2. API RESPONSE status:", aiResponse.status);
-    console.log("   Response content-type:", aiResponse.headers.get("content-type"));
 
     const aiResult = await aiResponse.json();
-    console.log("AI response keys:", Object.keys(aiResult));
-    console.log("AI response preview:", JSON.stringify(aiResult).substring(0, 300));
+    console.log("Gemini response preview:", JSON.stringify(aiResult).substring(0, 500));
 
-    // Extract generated image from response
+    // Extract generated image from Gemini native response format
     let generatedBase64: string | null = null;
     let generatedMimeType = "image/png";
 
-    const message = aiResult.choices?.[0]?.message;
-
-    // Check message.images[] (Lovable AI gateway format)
-    const images = message?.images;
-    if (Array.isArray(images) && images.length > 0) {
-      const imgUrl = images[0]?.image_url?.url;
-      if (imgUrl) {
-        const match = imgUrl.match(/^data:([^;]+);base64,(.+)$/s);
-        if (match) {
-          generatedMimeType = match[1];
-          generatedBase64 = match[2];
+    const candidateParts = aiResult.candidates?.[0]?.content?.parts;
+    if (Array.isArray(candidateParts)) {
+      for (const part of candidateParts) {
+        if (part.inlineData?.data) {
+          generatedBase64 = part.inlineData.data;
+          generatedMimeType = part.inlineData.mimeType || "image/png";
+          break;
         }
-      }
-    }
-
-    // Fallback: check content array
-    const content = message?.content;
-    if (!generatedBase64 && Array.isArray(content)) {
-      for (const part of content) {
-        if (part.type === "image_url" && part.image_url?.url) {
-          const match = part.image_url.url.match(/^data:([^;]+);base64,(.+)$/s);
-          if (match) {
-            generatedMimeType = match[1];
-            generatedBase64 = match[2];
-            break;
-          }
-        }
-      }
-    }
-
-    // Fallback: try parsing from string content
-    if (!generatedBase64 && typeof content === "string") {
-      const match = content.match(/data:([^;]+);base64,([A-Za-z0-9+/=\s]+)/s);
-      if (match) {
-        generatedMimeType = match[1];
-        generatedBase64 = match[2].replace(/\s/g, "");
       }
     }
 
     if (!generatedBase64) {
       await supabaseAdmin.from("jobs").update({ status: "failed" }).eq("id", job.id);
-      console.error("No image in AI response:", JSON.stringify(aiResult).substring(0, 1000));
+      console.error("No image in Gemini response:", JSON.stringify(aiResult).substring(0, 1000));
       throw new Error("AI did not return an image. Please try again.");
     }
 
