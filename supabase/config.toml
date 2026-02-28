@@ -1,1 +1,13 @@
 project_id = "cqpepfhaumfrwjkkssdb"
+
+[functions.detect-shot-type]
+verify_jwt = false
+
+[functions.edit-image]
+verify_jwt = false
+
+[functions.generate-staging]
+verify_jwt = false
+
+[functions.upscale-image]
+verify_jwt = false
