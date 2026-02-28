@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 
 interface Profile {
   full_name: string;
@@ -123,6 +124,19 @@ export default function Settings() {
                       <SelectItem value="minimal">Minimal White</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="flex items-center justify-between rounded-lg border border-border p-3">
+                  <div>
+                    <Label>Auto-upscale all exports</Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">Automatically upscale when downloading (costs extra credits per download)</p>
+                  </div>
+                  <Switch
+                    checked={localStorage.getItem("furnistudio_auto_upscale") === "true"}
+                    onCheckedChange={(c) => {
+                      localStorage.setItem("furnistudio_auto_upscale", c ? "true" : "false");
+                      toast({ title: c ? "Auto-upscale enabled" : "Auto-upscale disabled" });
+                    }}
+                  />
                 </div>
                 <Button onClick={handleSave} disabled={saving} className="bg-accent text-accent-foreground hover:bg-gold-dark">
                   {saving ? "Saving..." : "Save Preferences"}
