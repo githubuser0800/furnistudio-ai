@@ -525,7 +525,7 @@ ${shotPrompt}
 [TECHNICAL FLAVOR]: ${config.lensSpec}. ${imperfections[0]}. ${imperfections[1]}.
 
 [ASPECT RATIO]: ${aspectRatio || "1:1"}.
-[RESOLUTION]: 4K (4096px).`;
+[RESOLUTION]: Generate at the MAXIMUM possible resolution. Ultra high resolution output. Every detail must be crisp and sharp at full zoom.`;
   }
 
   return `${batchNote}[CONTEXT]: This is a premium furniture e-commerce photograph for a UK retailer website. The tone is ${config.mood}. Think of it as ${config.contextAnchor}.
@@ -537,7 +537,7 @@ ${shotPrompt}
 [TECHNICAL FLAVOR]: ${config.lensSpec}. ${imperfections[0]}. ${imperfections[1]}.
 
 [ASPECT RATIO]: ${aspectRatio || "1:1"}.
-[RESOLUTION]: 4K (4096px).`;
+[RESOLUTION]: Generate at the MAXIMUM possible resolution. Ultra high resolution output. Every detail must be crisp and sharp at full zoom.`;
 }
 
 // ── Build a C.S.S.T. prompt from a custom user description (image 1 only) ──
@@ -567,7 +567,7 @@ function buildCustomPrompt(
 [TECHNICAL FLAVOR]: Shot with a 35mm lens at f/4. ${imperfections[0]}. ${imperfections[1]}.
 
 [ASPECT RATIO]: ${aspectRatio || "1:1"}.
-[RESOLUTION]: 4K (4096px).`;
+[RESOLUTION]: Generate at the MAXIMUM possible resolution. Ultra high resolution output. Every detail must be crisp and sharp at full zoom.`;
 }
 
 // ── Build editing prompt for images 2+ using shot-type matching ──
@@ -615,7 +615,7 @@ ${PRODUCT_PRESERVATION}
 [TECHNICAL FLAVOR]: ${imperfections[0]}. ${imperfections[1]}.
 
 [ASPECT RATIO]: ${aspectRatio || "1:1"}.
-[RESOLUTION]: ${resolution || "1k"}.`;
+[RESOLUTION]: Generate at the MAXIMUM possible resolution. Ultra high resolution output.`;
 }
 
 
@@ -924,9 +924,8 @@ serve(async (req) => {
       throw new Error("AI did not return an image. Please try again.");
     }
 
-    // Decode and upload generated image
-    const ext = generatedMimeType.includes("png") ? "png" : "jpg";
-    const outputPath = `${user.id}/outputs/${job.id}.${ext}`;
+    // Always save as PNG for lossless quality
+    const outputPath = `${user.id}/outputs/${job.id}.png`;
 
     const binaryString = atob(generatedBase64);
     const outputBytes = new Uint8Array(binaryString.length);
@@ -934,9 +933,12 @@ serve(async (req) => {
       outputBytes[i] = binaryString.charCodeAt(i);
     }
 
+    // Log actual image size for debugging resolution
+    console.log("Output image size:", outputBytes.length, "bytes (~", Math.round(outputBytes.length / 1024), "KB)");
+
     const { error: uploadErr } = await supabaseAdmin.storage
       .from("furniture-images")
-      .upload(outputPath, outputBytes, { contentType: generatedMimeType });
+      .upload(outputPath, outputBytes, { contentType: "image/png" });
 
     if (uploadErr) {
       console.error("Upload error:", uploadErr);

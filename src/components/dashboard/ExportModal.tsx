@@ -6,12 +6,12 @@ import { Download, Check, Package } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const PRESETS = [
-  { id: "amazon", name: "Amazon UK", format: "JPEG", quality: 85, desc: "4K · White background check" },
-  { id: "ebay", name: "eBay UK", format: "JPEG", quality: 90, desc: "4K · JPEG high quality" },
-  { id: "etsy", name: "Etsy", format: "PNG", quality: 100, desc: "4K · PNG transparency" },
-  { id: "wayfair", name: "Wayfair", format: "JPEG", quality: 95, desc: "4K · JPEG max quality" },
-  { id: "social", name: "Social Media", format: "JPEG", quality: 90, desc: "4K · Platforms auto-resize" },
-  { id: "print", name: "Print Ready", format: "PNG", quality: 100, desc: "4K · Maximum quality PNG" },
+  { id: "amazon", name: "Amazon UK", format: "JPEG", quality: 85, desc: "Max resolution · White background check" },
+  { id: "ebay", name: "eBay UK", format: "JPEG", quality: 90, desc: "Max resolution · JPEG high quality" },
+  { id: "etsy", name: "Etsy", format: "PNG", quality: 100, desc: "Max resolution · PNG lossless" },
+  { id: "wayfair", name: "Wayfair", format: "JPEG", quality: 95, desc: "Max resolution · JPEG max quality" },
+  { id: "social", name: "Social Media", format: "JPEG", quality: 90, desc: "Max resolution · Platforms auto-resize" },
+  { id: "print", name: "Print Ready", format: "PNG", quality: 100, desc: "Max resolution · Maximum quality PNG" },
 ];
 
 const ASPECT_RATIOS = [
@@ -51,7 +51,7 @@ export default function ExportModal({ open, onClose, imageUrl, imageName, batchU
     const blob = await resp.blob();
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `${name.replace(/\.[^.]+$/, "")}-4K.${ext}`;
+    a.download = `${name.replace(/\.[^.]+$/, "")}.${ext}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -92,7 +92,7 @@ export default function ExportModal({ open, onClose, imageUrl, imageName, batchU
             {isBatch ? `Export ${batchUrls!.length} Images` : "Export Options"}
           </DialogTitle>
           <p className="text-sm text-muted-foreground">
-            All exports are 4K (4096px) resolution
+            Full resolution PNG · No compression or downscaling
           </p>
         </DialogHeader>
 
@@ -105,7 +105,7 @@ export default function ExportModal({ open, onClose, imageUrl, imageName, batchU
         )}
 
         {/* 4K Badge */}
-        <Badge variant="secondary" className="w-fit text-xs">4K · 4096px · All exports</Badge>
+        <Badge variant="secondary" className="w-fit text-xs">Full Resolution · PNG Lossless · All exports</Badge>
 
         {/* Marketplace Presets */}
         <div>
@@ -184,7 +184,7 @@ export default function ExportModal({ open, onClose, imageUrl, imageName, batchU
               ? "Downloading..."
               : isBatch
                 ? `Download ${batchUrls!.length} Images`
-                : "Download 4K"
+                : "Download Full Resolution"
             }
           </Button>
 
@@ -209,9 +209,9 @@ export default function ExportModal({ open, onClose, imageUrl, imageName, batchU
                 variant="outline"
                 size="sm"
                 className="flex-1 text-xs"
-                onClick={() => { setSelectedPreset(null); setCustomFormat("JPEG"); }}
+                onClick={() => { setSelectedPreset(null); setCustomFormat("PNG"); }}
               >
-                Original 4K
+                Original Full Res
               </Button>
             </div>
           )}
