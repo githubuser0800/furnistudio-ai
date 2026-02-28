@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import Navbar from "@/components/layout/Navbar";
+import MobileBottomNav from "@/components/layout/MobileBottomNav";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -693,6 +694,7 @@ export default function Library() {
       {exportImage && (
         <ExportModal open={!!exportImage} onClose={() => setExportImage(null)} imageUrl={exportImage.url} imageName={exportImage.name} />
       )}
+      <MobileBottomNav />
     </div>
   );
 }

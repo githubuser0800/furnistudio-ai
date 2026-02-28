@@ -3,14 +3,37 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import Navbar from "@/components/layout/Navbar";
+import MobileBottomNav from "@/components/layout/MobileBottomNav";
 import StyleSelectionModal from "@/components/dashboard/StyleSelectionModal";
 import ResultsView from "@/components/dashboard/ResultsView";
 import LowCreditBanner from "@/components/dashboard/LowCreditBanner";
 import CreditTopUpModal from "@/components/dashboard/CreditTopUpModal";
 import BatchUploadFlow from "@/components/dashboard/BatchUploadFlow";
-import { Upload, Image as ImageIcon, Sparkles, Layers, BarChart3, ArrowRight, Images } from "lucide-react";
+import OnboardingModal from "@/components/dashboard/OnboardingModal";
+import {
+  Upload,
+  Image as ImageIcon,
+  Sparkles,
+  Layers,
+  BarChart3,
+  ArrowRight,
+  Images,
+  Star,
+  RotateCcw,
+  Download,
+  Pencil,
+  RefreshCw,
+  FolderPlus,
+  Trash2,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface UserImage {
   id: string;
@@ -22,6 +45,7 @@ interface UserImage {
 interface Profile {
   credits_remaining: number;
   subscription_tier: string;
+  full_name: string | null;
 }
 
 interface RecentJob {
@@ -29,6 +53,12 @@ interface RecentJob {
   output_url: string | null;
   template_id: string | null;
   created_at: string;
+}
+
+interface FolderItem {
+  id: string;
+  name: string;
+  color: string;
 }
 
 type View = "grid" | "processing" | "results" | "batch";
@@ -62,7 +92,11 @@ export default function Dashboard() {
   const [recentJobUrls, setRecentJobUrls] = useState<Record<string, string>>({});
   const [monthlyUploads, setMonthlyUploads] = useState(0);
   const [monthlyGenerated, setMonthlyGenerated] = useState(0);
+  const [monthlyCreditsUsed, setMonthlyCreditsUsed] = useState(0);
   const [showTopUp, setShowTopUp] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [recentFolders, setRecentFolders] = useState<FolderItem[]>([]);
+  const [lastTemplateId, setLastTemplateId] = useState<string | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -86,17 +120,31 @@ export default function Dashboard() {
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
 
-    const [{ data: profileData }, { data: imagesData }, { data: jobsData }, { data: monthUploads }, { data: monthJobs }] = await Promise.all([
-      supabase.from("profiles").select("credits_remaining, subscription_tier").eq("id", user.id).single(),
+    const [{ data: profileData }, { data: imagesData }, { data: jobsData }, { data: monthUploads }, { data: monthJobs }, { data: foldersData }] = await Promise.all([
+      supabase.from("profiles").select("credits_remaining, subscription_tier, full_name").eq("id", user.id).single(),
       supabase.from("images").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
-      supabase.from("jobs").select("id, output_url, template_id, created_at").eq("user_id", user.id).eq("status", "completed").order("created_at", { ascending: false }).limit(4),
+      supabase.from("jobs").select("id, output_url, template_id, created_at, credits_used").eq("user_id", user.id).eq("status", "completed").order("created_at", { ascending: false }).limit(4),
       supabase.from("images").select("id", { count: "exact" }).eq("user_id", user.id).gte("created_at", startOfMonth.toISOString()),
-      supabase.from("jobs").select("id", { count: "exact" }).eq("user_id", user.id).eq("status", "completed").gte("created_at", startOfMonth.toISOString()),
+      supabase.from("jobs").select("id, credits_used", { count: "exact" }).eq("user_id", user.id).eq("status", "completed").gte("created_at", startOfMonth.toISOString()),
+      (supabase as any).from("folders").select("id, name, color").eq("user_id", user.id).order("updated_at", { ascending: false }).limit(4),
     ]);
 
-    if (profileData) setProfile(profileData);
+    if (profileData) setProfile(profileData as Profile);
     setMonthlyUploads(monthUploads?.length || 0);
     setMonthlyGenerated(monthJobs?.length || 0);
+    setMonthlyCreditsUsed((monthJobs || []).reduce((sum: number, j: any) => sum + (j.credits_used || 0), 0));
+    if (foldersData) setRecentFolders(foldersData as FolderItem[]);
+
+    // Check if new user (no images and no jobs)
+    if ((!imagesData || imagesData.length === 0) && (!jobsData || jobsData.length === 0)) {
+      const onboarded = localStorage.getItem("furnistudio_onboarded");
+      if (!onboarded) setShowOnboarding(true);
+    }
+
+    // Get last used template
+    if (jobsData && jobsData.length > 0) {
+      setLastTemplateId(jobsData[0].template_id);
+    }
 
     if (imagesData) {
       setImages(imagesData);
@@ -132,6 +180,11 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  const handleCloseOnboarding = () => {
+    setShowOnboarding(false);
+    localStorage.setItem("furnistudio_onboarded", "true");
+  };
 
   const handleUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -209,12 +262,39 @@ export default function Dashboard() {
     fetchData();
   };
 
+  const handleRedoLast = () => {
+    if (lastTemplateId && images.length > 0) {
+      setSelectedImage(images[0]);
+      setShowStyleModal(true);
+    }
+  };
+
+  const handleDeleteImage = async (imgId: string) => {
+    await supabase.from("images").delete().eq("id", imgId);
+    fetchData();
+    toast({ title: "Image deleted" });
+  };
+
+  const handleQuickDownload = async (url: string, name: string) => {
+    try {
+      const resp = await fetch(url);
+      const blob = await resp.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${name}.jpg`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch { /* skip */ }
+  };
+
   const maxCredits = profile?.subscription_tier === "free" ? 10 : profile?.subscription_tier === "starter" ? 50 : profile?.subscription_tier === "pro" ? 200 : 600;
+  const firstName = profile?.full_name?.split(" ")[0] || "there";
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background pb-20 md:pb-0">
       <Navbar />
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-6 sm:py-8">
         {/* Processing overlay */}
         {view === "processing" && (
           <div className="flex flex-col items-center justify-center py-24 text-center">
@@ -223,7 +303,7 @@ export default function Dashboard() {
               <Sparkles className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-8 w-8 text-accent" />
             </div>
             <h2 className="text-xl font-bold text-foreground mb-2">AI is staging your furniture...</h2>
-            <p className="text-muted-foreground max-w-md">This typically takes 15–30 seconds.</p>
+            <p className="text-muted-foreground max-w-md">This typically takes 15–30 seconds. This will use 1 credit.</p>
           </div>
         )}
 
@@ -253,8 +333,16 @@ export default function Dashboard() {
         {/* Default grid view */}
         {view === "grid" && (
           <>
-            {/* Low Credit Banner */}
-            {profile && (
+            {/* Low Credit Banners */}
+            {profile && profile.credits_remaining === 0 && (
+              <div className="mb-6 flex items-center justify-between rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3">
+                <span className="text-sm font-medium text-destructive">No credits remaining — generation blocked</span>
+                <Button size="sm" onClick={() => setShowTopUp(true)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                  Upgrade Now
+                </Button>
+              </div>
+            )}
+            {profile && profile.credits_remaining > 0 && (
               <LowCreditBanner
                 creditsRemaining={profile.credits_remaining}
                 maxCredits={maxCredits}
@@ -262,74 +350,82 @@ export default function Dashboard() {
               />
             )}
 
-            {/* Header */}
-            <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
+            {/* Personalized Header */}
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
               <div>
-                <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-                <p className="text-sm text-muted-foreground">Upload furniture images and stage them with AI</p>
+                <h1 className="text-2xl font-bold text-foreground">
+                  Hi {firstName}! <span className="text-accent">{profile?.credits_remaining ?? 0}</span> credits remaining
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  This month: {monthlyGenerated} images · {monthlyCreditsUsed} credits used
+                </p>
               </div>
-              {profile && (
-                <div className="flex items-center gap-3">
-                  <button onClick={() => setShowTopUp(true)}>
-                    <Badge variant="outline" className="px-3 py-1 text-sm cursor-pointer hover:bg-accent/10 transition-colors">
-                      {profile.credits_remaining} credits remaining
-                    </Badge>
-                  </button>
-                  <Badge className="bg-accent text-accent-foreground capitalize px-3 py-1">
-                    {profile.subscription_tier}
-                  </Badge>
-                </div>
-              )}
+              <Button
+                onClick={() => document.getElementById("file-input")?.click()}
+                className="bg-accent text-accent-foreground hover:bg-accent/90 min-h-[44px]"
+              >
+                <Upload className="mr-2 h-4 w-4" />
+                Upload Images
+              </Button>
             </div>
 
-            {/* Quick Stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
-              <div className="rounded-xl border border-border bg-card p-4">
-                <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                  <Upload className="h-4 w-4" />
-                  <span className="text-xs font-medium">Uploads this month</span>
-                </div>
-                <p className="text-2xl font-bold text-foreground">{monthlyUploads}</p>
-              </div>
-              <div className="rounded-xl border border-border bg-card p-4">
-                <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                  <Sparkles className="h-4 w-4" />
-                  <span className="text-xs font-medium">Generated this month</span>
-                </div>
-                <p className="text-2xl font-bold text-foreground">{monthlyGenerated}</p>
-              </div>
-              <div className="rounded-xl border border-border bg-card p-4">
-                <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                  <BarChart3 className="h-4 w-4" />
-                  <span className="text-xs font-medium">Credits remaining</span>
-                </div>
-                <p className="text-2xl font-bold text-foreground">{profile?.credits_remaining ?? 0}</p>
-              </div>
-              <div className="rounded-xl border border-border bg-card p-4 flex items-center justify-center">
-                <Button variant="outline" size="sm" onClick={() => navigate("/dashboard/library")} className="w-full">
-                  <Layers className="mr-2 h-4 w-4" /> View Library
+            {/* Quick Actions */}
+            <div className="flex flex-wrap gap-2 mb-6">
+              <Button
+                variant="outline"
+                size="sm"
+                className="min-h-[44px]"
+                onClick={() => document.getElementById("file-input")?.click()}
+              >
+                <Upload className="mr-1.5 h-4 w-4" /> Upload
+              </Button>
+              {lastTemplateId && (
+                <Button variant="outline" size="sm" className="min-h-[44px]" onClick={handleRedoLast}>
+                  <RotateCcw className="mr-1.5 h-4 w-4" /> Redo Last
                 </Button>
-              </div>
+              )}
+              <Button variant="outline" size="sm" className="min-h-[44px]" onClick={() => navigate("/dashboard/library")}>
+                <Star className="mr-1.5 h-4 w-4" /> Favorites
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="min-h-[44px]"
+                onClick={() => setView("batch")}
+              >
+                <Images className="mr-1.5 h-4 w-4" /> Batch Upload
+              </Button>
             </div>
 
             {/* Recent Generated */}
             {recentJobs.length > 0 && (
               <div className="mb-8">
                 <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-lg font-semibold text-foreground">Recent Generations</h2>
+                  <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Recent</h2>
                   <button onClick={() => navigate("/dashboard/library")} className="text-sm text-accent hover:underline flex items-center gap-1">
                     View All <ArrowRight className="h-3 w-3" />
                   </button>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {recentJobs.map((job) => (
-                    <div key={job.id} className="rounded-xl border border-border bg-card overflow-hidden">
-                      <div className="aspect-square bg-muted overflow-hidden">
+                    <div key={job.id} className="group rounded-xl border border-border bg-card overflow-hidden">
+                      <div className="aspect-square bg-muted overflow-hidden relative">
                         {recentJobUrls[job.id] ? (
                           <img src={recentJobUrls[job.id]} alt="Generated" className="h-full w-full object-cover" />
                         ) : (
                           <div className="h-full w-full flex items-center justify-center">
                             <Layers className="h-8 w-8 text-muted-foreground/30" />
+                          </div>
+                        )}
+                        {/* Quick action overlay */}
+                        {recentJobUrls[job.id] && (
+                          <div className="absolute inset-0 bg-background/0 group-hover:bg-background/60 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                            <button
+                              onClick={() => handleQuickDownload(recentJobUrls[job.id], job.template_id || "image")}
+                              className="h-9 w-9 min-h-[44px] min-w-[44px] rounded-full bg-card flex items-center justify-center shadow-md hover:bg-accent hover:text-accent-foreground transition-colors"
+                            >
+                              <Download className="h-4 w-4" />
+                            </button>
                           </div>
                         )}
                       </div>
@@ -347,10 +443,59 @@ export default function Dashboard() {
               </div>
             )}
 
+            {/* Quick Stats */}
+            <div className="grid grid-cols-3 gap-3 mb-8">
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                  <Upload className="h-4 w-4" />
+                  <span className="text-xs font-medium">Uploads</span>
+                </div>
+                <p className="text-2xl font-bold text-foreground">{monthlyUploads}</p>
+              </div>
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                  <Sparkles className="h-4 w-4" />
+                  <span className="text-xs font-medium">Generated</span>
+                </div>
+                <p className="text-2xl font-bold text-foreground">{monthlyGenerated}</p>
+              </div>
+              <div className="rounded-xl border border-border bg-card p-4 cursor-pointer hover:border-accent/50 transition-colors" onClick={() => setShowTopUp(true)}>
+                <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                  <BarChart3 className="h-4 w-4" />
+                  <span className="text-xs font-medium">Credits</span>
+                </div>
+                <p className="text-2xl font-bold text-accent">{profile?.credits_remaining ?? 0}</p>
+              </div>
+            </div>
+
+            {/* Recent Folders */}
+            {recentFolders.length > 0 && (
+              <div className="mb-8">
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Projects</h2>
+                  <button onClick={() => navigate("/dashboard/library")} className="text-sm text-accent hover:underline flex items-center gap-1">
+                    View All <ArrowRight className="h-3 w-3" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {recentFolders.map((folder) => (
+                    <button
+                      key={folder.id}
+                      onClick={() => navigate("/dashboard/library")}
+                      className="rounded-xl border border-border bg-card p-4 text-left hover:border-accent/50 transition-all min-h-[44px]"
+                    >
+                      <div className="h-3 w-3 rounded-full mb-2" style={{ backgroundColor: folder.color }} />
+                      <p className="text-sm font-medium text-card-foreground truncate">{folder.name}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Upload Zone */}
-            <div className="mb-10 flex flex-col sm:flex-row gap-4">
+            <div className="mb-8 flex flex-col sm:flex-row gap-4">
               <div
-                className={`flex-1 flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-10 transition-colors ${
+                className={`flex-1 flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 sm:p-10 transition-colors min-h-[120px] ${
                   dragOver ? "border-accent bg-accent/5" : "border-border hover:border-accent/50"
                 }`}
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -361,14 +506,14 @@ export default function Dashboard() {
                 <input id="file-input" type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleUpload(e.target.files)} />
                 <Upload className={`mb-3 h-8 w-8 ${dragOver ? "text-accent" : "text-muted-foreground"}`} />
                 <p className="mb-1 text-base font-medium text-foreground">
-                  {uploading ? "Uploading..." : "Drop images here or click to browse"}
+                  {uploading ? "Uploading..." : "Drop images here"}
                 </p>
-                <p className="text-sm text-muted-foreground">Single image · quick staging</p>
+                <p className="text-sm text-muted-foreground">Single image · 1 credit per generation</p>
               </div>
 
               <button
                 onClick={() => setView("batch")}
-                className="flex-1 flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border p-10 hover:border-accent/50 transition-colors"
+                className="flex-1 flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border p-8 sm:p-10 hover:border-accent/50 transition-colors min-h-[120px]"
               >
                 <Images className="mb-3 h-8 w-8 text-muted-foreground" />
                 <p className="text-base font-medium text-foreground">Batch Upload</p>
@@ -376,7 +521,7 @@ export default function Dashboard() {
               </button>
             </div>
 
-            {/* Images Grid */}
+            {/* Images Grid with Context Menu */}
             {images.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
                 <ImageIcon className="mb-4 h-12 w-12 text-muted-foreground/40" />
@@ -384,27 +529,57 @@ export default function Dashboard() {
                 <p className="text-sm text-muted-foreground/60">Upload your first furniture photo to get started</p>
               </div>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+              <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                 {images.map((img) => (
                   <div
                     key={img.id}
-                    onClick={() => handleImageClick(img)}
                     className="card-elevated group cursor-pointer overflow-hidden rounded-xl border border-border bg-card transition-all hover:border-accent/50 hover:shadow-lg"
                   >
-                    <div className="aspect-square bg-muted flex items-center justify-center overflow-hidden relative">
+                    <div
+                      className="aspect-square bg-muted flex items-center justify-center overflow-hidden relative"
+                      onClick={() => handleImageClick(img)}
+                    >
                       {imageUrls[img.id] ? (
                         <img src={imageUrls[img.id]} alt={img.filename} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
                       ) : (
                         <ImageIcon className="h-10 w-10 text-muted-foreground/30" />
                       )}
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                        <Sparkles className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <div className="absolute inset-0 bg-background/0 group-hover:bg-background/40 transition-colors flex items-center justify-center">
+                        <Sparkles className="h-8 w-8 text-accent opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-md" />
                       </div>
                     </div>
                     <div className="p-3">
-                      <p className="truncate text-sm font-medium text-card-foreground">{img.filename}</p>
-                      <p className="text-xs text-muted-foreground">{new Date(img.created_at).toLocaleDateString("en-GB")}</p>
-                      <p className="text-xs text-accent mt-1 opacity-0 group-hover:opacity-100 transition-opacity">Click to stage with AI →</p>
+                      <div className="flex items-center justify-between">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-card-foreground">{img.filename}</p>
+                          <p className="text-xs text-muted-foreground">{new Date(img.created_at).toLocaleDateString("en-GB")}</p>
+                        </div>
+                        {/* Actions dropdown */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button className="h-8 w-8 min-h-[44px] min-w-[44px] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-muted transition-all shrink-0 -mr-1">
+                              <span className="text-muted-foreground text-lg leading-none">⋯</span>
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {imageUrls[img.id] && (
+                              <DropdownMenuItem onClick={() => handleQuickDownload(imageUrls[img.id], img.filename)}>
+                                <Download className="mr-2 h-3 w-3" /> Download
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem onClick={() => handleImageClick(img)}>
+                              <Sparkles className="mr-2 h-3 w-3" /> Generate
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleImageClick(img)}>
+                              <RefreshCw className="mr-2 h-3 w-3" /> Regenerate
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteImage(img.id)}>
+                              <Trash2 className="mr-2 h-3 w-3" /> Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                      <p className="text-xs text-accent mt-1 opacity-0 group-hover:opacity-100 transition-opacity">Click to stage · 1 credit</p>
                     </div>
                   </div>
                 ))}
@@ -428,6 +603,15 @@ export default function Dashboard() {
         onClose={() => setShowTopUp(false)}
         creditsRemaining={profile?.credits_remaining ?? 0}
       />
+
+      <OnboardingModal
+        open={showOnboarding}
+        onClose={handleCloseOnboarding}
+        onStartUpload={() => document.getElementById("file-input")?.click()}
+      />
+
+      {/* Mobile Bottom Nav */}
+      <MobileBottomNav onUploadClick={() => document.getElementById("file-input")?.click()} />
     </div>
   );
 }
