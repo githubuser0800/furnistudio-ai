@@ -139,7 +139,7 @@ export default function UpscaleModal({
                   }`}
                 >
                   <div className="text-sm font-bold text-foreground">2x Upscale</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">4K → 8K (8192px)</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Double resolution</div>
                   <Badge variant="outline" className="mt-2 text-[10px]">0.5 credits</Badge>
                 </button>
                 <button
@@ -151,7 +151,7 @@ export default function UpscaleModal({
                   }`}
                 >
                   <div className="text-sm font-bold text-foreground">4x Upscale</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">4K → 16K (16384px)</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Quadruple resolution</div>
                   <Badge variant="outline" className="mt-2 text-[10px]">1 credit</Badge>
                 </button>
               </div>
