@@ -114,36 +114,51 @@ serve(async (req) => {
       }
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("AI service not configured");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not configured");
 
-    const messageContent = [
+    // Build Gemini parts
+    const geminiParts: Array<Record<string, unknown>> = [
       {
-        type: "text",
         text: `EDIT THIS IMAGE. Keep the furniture product EXACTLY as is - same shape, color, materials, texture, position. Do NOT alter the furniture piece in any way. Only modify: ${edit_instruction}. Maintain photorealistic quality throughout.`,
       },
       {
-        type: "image_url",
-        image_url: { url: `data:${genMime};base64,${base64Gen}` },
+        inlineData: { mimeType: genMime, data: base64Gen },
       },
-      ...productParts,
     ];
+
+    // Add product reference if available
+    if (productParts.length > 0) {
+      geminiParts.push({
+        text: "PRODUCT REFERENCE: This is the original furniture product. Keep it EXACTLY as is - same shape, color, materials, position. Only modify the environment as instructed.",
+      });
+      // productParts was built for OpenAI format, extract the base64 data
+      const prodPart = productParts.find((p: any) => p.type === "image_url");
+      if (prodPart) {
+        const prodUrl = (prodPart as any).image_url?.url as string;
+        const prodMatch = prodUrl?.match(/^data:([^;]+);base64,(.+)$/s);
+        if (prodMatch) {
+          geminiParts.push({
+            inlineData: { mimeType: prodMatch[1], data: prodMatch[2] },
+          });
+        }
+      }
+    }
 
     console.log("Edit request | job:", job_id, "| instruction:", edit_instruction);
 
+    const geminiModel = "gemini-2.0-flash-exp-image-generation";
     const aiResponse = await fetch(
-      "https://ai.gateway.lovable.dev/v1/chat/completions",
+      `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "google/gemini-3-pro-image-preview",
-          messages: [{ role: "user", content: messageContent }],
-          modalities: ["image", "text"],
-          temperature: 0.3,
+          contents: [{ parts: geminiParts }],
+          generationConfig: {
+            temperature: 0.3,
+            responseModalities: ["TEXT", "IMAGE"],
+          },
           imageConfig: {
             imageSize: "4K",
           },
@@ -153,66 +168,35 @@ serve(async (req) => {
 
     if (!aiResponse.ok) {
       const errText = await aiResponse.text();
-      console.error("AI error:", aiResponse.status, errText);
+      console.error("Gemini API error:", aiResponse.status, errText);
       if (aiResponse.status === 429) {
         return new Response(
           JSON.stringify({ error: "AI service rate limited. Please try again shortly." }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      if (aiResponse.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "AI service payment required. Please add credits." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      throw new Error("AI editing failed");
+      throw new Error("AI editing failed: " + errText.substring(0, 200));
     }
 
     const aiResult = await aiResponse.json();
 
-    // Extract generated image
+    // Extract generated image from Gemini native response
     let generatedBase64: string | null = null;
     let generatedMimeType = "image/png";
 
-    const message = aiResult.choices?.[0]?.message;
-
-    const images = message?.images;
-    if (Array.isArray(images) && images.length > 0) {
-      const imgUrl = images[0]?.image_url?.url;
-      if (imgUrl) {
-        const match = imgUrl.match(/^data:([^;]+);base64,(.+)$/s);
-        if (match) {
-          generatedMimeType = match[1];
-          generatedBase64 = match[2];
+    const candidateParts = aiResult.candidates?.[0]?.content?.parts;
+    if (Array.isArray(candidateParts)) {
+      for (const part of candidateParts) {
+        if (part.inlineData?.data) {
+          generatedBase64 = part.inlineData.data;
+          generatedMimeType = part.inlineData.mimeType || "image/png";
+          break;
         }
-      }
-    }
-
-    const content = message?.content;
-    if (!generatedBase64 && Array.isArray(content)) {
-      for (const part of content) {
-        if (part.type === "image_url" && part.image_url?.url) {
-          const match = part.image_url.url.match(/^data:([^;]+);base64,(.+)$/s);
-          if (match) {
-            generatedMimeType = match[1];
-            generatedBase64 = match[2];
-            break;
-          }
-        }
-      }
-    }
-
-    if (!generatedBase64 && typeof content === "string") {
-      const match = content.match(/data:([^;]+);base64,([A-Za-z0-9+/=\s]+)/s);
-      if (match) {
-        generatedMimeType = match[1];
-        generatedBase64 = match[2].replace(/\s/g, "");
       }
     }
 
     if (!generatedBase64) {
-      console.error("No image in AI response:", JSON.stringify(aiResult).substring(0, 1000));
+      console.error("No image in Gemini response:", JSON.stringify(aiResult).substring(0, 1000));
       throw new Error("AI did not return an image. Please try again.");
     }
 
