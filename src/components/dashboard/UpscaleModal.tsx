@@ -39,9 +39,9 @@ export default function UpscaleModal({
   const [result, setResult] = useState<{ url: string; label: string } | null>(null);
   const { toast } = useToast();
 
-  const creditCost = scale === "4x" ? 1 : 0.5;
+  const creditCost = 1;
   const resLabel = scale === "4x" ? "16K (16384px)" : "8K (8192px)";
-  const hasEnough = creditsRemaining >= (scale === "4x" ? 1 : 1);
+  const hasEnough = creditsRemaining >= creditCost;
 
   const handleUpscale = async () => {
     setProcessing(true);
@@ -140,7 +140,7 @@ export default function UpscaleModal({
                 >
                   <div className="text-sm font-bold text-foreground">2x Upscale</div>
                   <div className="text-xs text-muted-foreground mt-0.5">Double resolution</div>
-                  <Badge variant="outline" className="mt-2 text-[10px]">0.5 credits</Badge>
+                  <Badge variant="outline" className="mt-2 text-[10px]">1 credit</Badge>
                 </button>
                 <button
                   onClick={() => setScale("4x")}

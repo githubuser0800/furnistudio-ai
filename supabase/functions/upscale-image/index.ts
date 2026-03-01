@@ -37,8 +37,11 @@ serve(async (req) => {
       throw new Error("Missing image_path or scale");
     }
 
-    const creditCost = scale === "4x" ? 1 : 0.5;
-    const minCredits = scale === "4x" ? 1 : 1; // stored as int, minimum 1
+    if (scale !== "2x" && scale !== "4x") {
+      throw new Error("Invalid scale. Must be '2x' or '4x'");
+    }
+
+    const creditCost = 1;
 
     // Check credits
     const { data: profile } = await supabaseAdmin
@@ -47,7 +50,7 @@ serve(async (req) => {
       .eq("id", user.id)
       .single();
 
-    if (!profile || profile.credits_remaining < minCredits) {
+    if (!profile || profile.credits_remaining < creditCost) {
       return new Response(
         JSON.stringify({ error: "Insufficient credits", credits_remaining: profile?.credits_remaining || 0 }),
         { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -154,8 +157,7 @@ serve(async (req) => {
     if (uploadErr) throw new Error("Failed to store upscaled image");
 
     // Deduct credits
-    const deduction = scale === "4x" ? 1 : 1; // minimum integer deduction
-    const newCredits = Math.max(0, profile.credits_remaining - deduction);
+    const newCredits = Math.max(0, profile.credits_remaining - creditCost);
     await supabaseAdmin
       .from("profiles")
       .update({ credits_remaining: newCredits })

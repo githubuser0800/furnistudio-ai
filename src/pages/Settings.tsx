@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import Navbar from "@/components/layout/Navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface Profile {
   full_name: string;
@@ -23,7 +25,12 @@ interface Profile {
 export default function Settings() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  const defaultTab = searchParams.get("tab") || "profile";
 
   useEffect(() => {
     (async () => {
@@ -34,14 +41,24 @@ export default function Settings() {
     })();
   }, []);
 
+  const validate = (): boolean => {
+    const errs: Record<string, string> = {};
+    if (!profile) return false;
+    if (!profile.full_name?.trim()) errs.full_name = "Name is required";
+    if (profile.full_name && profile.full_name.length > 100) errs.full_name = "Max 100 characters";
+    if (profile.company_name && profile.company_name.length > 100) errs.company_name = "Max 100 characters";
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
   const handleSave = async () => {
-    if (!profile) return;
+    if (!profile || !validate()) return;
     setSaving(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     const { error } = await supabase.from("profiles").update({
-      full_name: profile.full_name,
-      company_name: profile.company_name,
+      full_name: profile.full_name.trim(),
+      company_name: profile.company_name?.trim() || null,
       default_resolution: profile.default_resolution,
       default_template: profile.default_template,
     }).eq("id", user.id);
@@ -57,8 +74,10 @@ export default function Settings() {
     return (
       <div className="min-h-screen bg-background">
         <Navbar />
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-accent border-t-transparent" />
+        <div className="container mx-auto max-w-2xl px-4 py-8 space-y-6">
+          <Skeleton className="h-8 w-40" />
+          <Skeleton className="h-10 w-72" />
+          <Skeleton className="h-64 rounded-xl" />
         </div>
       </div>
     );
@@ -68,9 +87,9 @@ export default function Settings() {
     <div className="min-h-screen bg-background">
       <Navbar />
       <div className="container mx-auto max-w-2xl px-4 py-8">
-        <h1 className="mb-6 text-2xl font-bold text-foreground">Settings</h1>
+        <h1 className="mb-6 text-2xl font-bold font-heading text-foreground">Settings</h1>
 
-        <Tabs defaultValue="profile">
+        <Tabs defaultValue={defaultTab}>
           <TabsList className="mb-6">
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="preferences">Preferences</TabsTrigger>
@@ -82,7 +101,12 @@ export default function Settings() {
               <div className="space-y-4">
                 <div>
                   <Label>Full Name</Label>
-                  <Input value={profile.full_name || ""} onChange={(e) => setProfile({ ...profile, full_name: e.target.value })} />
+                  <Input
+                    value={profile.full_name || ""}
+                    onChange={(e) => { setProfile({ ...profile, full_name: e.target.value }); setErrors((prev) => ({ ...prev, full_name: "" })); }}
+                    maxLength={100}
+                  />
+                  {errors.full_name && <p className="text-xs text-destructive mt-1">{errors.full_name}</p>}
                 </div>
                 <div>
                   <Label>Email</Label>
@@ -90,7 +114,13 @@ export default function Settings() {
                 </div>
                 <div>
                   <Label>Company Name</Label>
-                  <Input value={profile.company_name || ""} onChange={(e) => setProfile({ ...profile, company_name: e.target.value })} placeholder="Your furniture company" />
+                  <Input
+                    value={profile.company_name || ""}
+                    onChange={(e) => { setProfile({ ...profile, company_name: e.target.value }); setErrors((prev) => ({ ...prev, company_name: "" })); }}
+                    placeholder="Your furniture company"
+                    maxLength={100}
+                  />
+                  {errors.company_name && <p className="text-xs text-destructive mt-1">{errors.company_name}</p>}
                 </div>
                 <Button onClick={handleSave} disabled={saving} className="bg-accent text-accent-foreground hover:bg-gold-dark">
                   {saving ? "Saving..." : "Save Changes"}
@@ -156,7 +186,7 @@ export default function Settings() {
                   {profile.credits_remaining} credits
                 </Badge>
               </div>
-              <Button variant="outline">Upgrade Plan</Button>
+              <Button variant="outline" onClick={() => navigate("/pricing")}>Upgrade Plan</Button>
             </div>
           </TabsContent>
         </Tabs>

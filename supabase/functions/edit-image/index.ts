@@ -8,7 +8,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const EDIT_CREDIT_COST = 0.5;
+const EDIT_CREDIT_COST = 1;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -46,7 +46,11 @@ serve(async (req) => {
       throw new Error("Missing job_id or edit_instruction");
     }
 
-    // Check credits (0.5 per edit, stored as integer so check >= 1)
+    if (typeof edit_instruction !== "string" || edit_instruction.length > 2000) {
+      throw new Error("edit_instruction must be a string under 2000 characters");
+    }
+
+    // Check credits
     const { data: profile } = await supabaseAdmin
       .from("profiles")
       .select("credits_remaining")
@@ -216,8 +220,8 @@ serve(async (req) => {
 
     if (uploadErr) throw new Error("Failed to store edited image");
 
-    // Deduct 0.5 credits (round down to integer)
-    const newCredits = Math.max(0, profile.credits_remaining - 1);
+    // Deduct credits
+    const newCredits = Math.max(0, profile.credits_remaining - EDIT_CREDIT_COST);
     await supabaseAdmin
       .from("profiles")
       .update({ credits_remaining: newCredits })

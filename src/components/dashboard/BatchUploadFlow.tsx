@@ -107,7 +107,7 @@ export default function BatchUploadFlow({
     return () => clearInterval(interval);
   }, [step, startTime]);
 
-  const estimatedSeconds = processingTotal * 20;
+  const estimatedSeconds = processingTotal * 25;
   const remainingSeconds = Math.max(0, estimatedSeconds - elapsed);
   const formatTime = (s: number) => s < 60 ? `~${s}s remaining` : `~${Math.ceil(s / 60)}m remaining`;
 
@@ -373,7 +373,7 @@ export default function BatchUploadFlow({
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
               {files.map((f, i) => (
-                <div key={i} className="relative rounded-xl border border-border bg-card overflow-hidden">
+                <div key={`${f.file.name}-${f.file.size}-${f.file.lastModified}`} className="relative rounded-xl border border-border bg-card overflow-hidden">
                   <button
                     onClick={() => removeFile(i)}
                     className="absolute top-1.5 right-1.5 z-10 h-6 w-6 rounded-full bg-destructive/80 flex items-center justify-center hover:bg-destructive transition-colors"
@@ -451,8 +451,8 @@ export default function BatchUploadFlow({
         {!detecting && (
           <>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-              {uploadedFiles.map((f, i) => (
-                <div key={i} className="rounded-xl border border-border bg-card overflow-hidden">
+              {uploadedFiles.map((f) => (
+                <div key={f.imageId || `${f.file.name}-${f.file.size}`} className="rounded-xl border border-border bg-card overflow-hidden">
                   <div className="aspect-square overflow-hidden relative">
                     <img src={f.preview} alt={f.file.name} className="h-full w-full object-cover" />
                     {f.detectedLabel && f.label === f.detectedLabel && (
@@ -564,7 +564,7 @@ export default function BatchUploadFlow({
           {files.filter((f) => f.uploaded).map((f, i) => {
             const result = batchResults[i];
             return (
-              <div key={i} className="relative aspect-square rounded-lg overflow-hidden border border-border">
+              <div key={f.imageId || `${f.file.name}-${f.file.size}`} className="relative aspect-square rounded-lg overflow-hidden border border-border">
                 {result?.status === "completed" && result.afterUrl ? (
                   <img src={result.afterUrl} alt={f.label} className="h-full w-full object-cover" />
                 ) : (
@@ -624,8 +624,8 @@ export default function BatchUploadFlow({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-        {batchResults.map((r, i) => (
-          <div key={i} className="rounded-xl border border-border bg-card overflow-hidden group">
+        {batchResults.map((r, idx) => (
+          <div key={r.jobId || r.imageId} className="rounded-xl border border-border bg-card overflow-hidden group">
             <div className="aspect-square overflow-hidden relative">
               {r.status === "completed" && r.afterUrl ? (
                 <img src={r.afterUrl} alt={r.label} className="h-full w-full object-cover" />
@@ -641,14 +641,14 @@ export default function BatchUploadFlow({
                   <CheckCircle className="h-5 w-5 text-accent drop-shadow-md" />
                 </div>
               )}
-              {i === 0 && r.status === "completed" && (
+              {idx === 0 && r.status === "completed" && (
                 <div className="absolute top-2 left-2">
                   <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">Master</Badge>
                 </div>
               )}
             </div>
             <div className="p-3">
-              <p className="text-sm font-medium text-card-foreground">{r.label || `Image ${i + 1}`}</p>
+              <p className="text-sm font-medium text-card-foreground">{r.label || `Image ${idx + 1}`}</p>
               {r.status === "completed" && r.afterUrl && (
                 <div className="flex gap-1 mt-2">
                   <Button
@@ -663,7 +663,7 @@ export default function BatchUploadFlow({
                     size="sm"
                     variant="ghost"
                     className="flex-1 text-xs h-8"
-                    onClick={() => setExportImage({ url: r.afterUrl, name: r.label || `batch-${i + 1}` })}
+                    onClick={() => setExportImage({ url: r.afterUrl, name: r.label || `batch-${idx + 1}` })}
                   >
                     <Pencil className="mr-1 h-3 w-3" /> Export
                   </Button>

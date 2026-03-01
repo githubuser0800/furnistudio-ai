@@ -50,7 +50,7 @@ export default function Usage() {
     if (!user) return;
 
     const [{ data: jobsData }, { data: profile }] = await Promise.all([
-      supabase.from("jobs").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
+      supabase.from("jobs").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(500),
       supabase.from("profiles").select("credits_remaining").eq("id", user.id).single(),
     ]);
 

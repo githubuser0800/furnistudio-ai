@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Check, Zap } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 const PACKAGES = [
   { id: "25", credits: 25, price: 5, perCredit: "£0.20", savings: null, badge: null },
@@ -18,16 +19,14 @@ interface CreditTopUpModalProps {
 
 export default function CreditTopUpModal({ open, onClose, creditsRemaining }: CreditTopUpModalProps) {
   const [selected, setSelected] = useState("50");
-  const [purchasing, setPurchasing] = useState(false);
+  const { toast } = useToast();
 
-  const handlePurchase = async () => {
-    setPurchasing(true);
-    // TODO: Integrate with Stripe checkout
-    // For now, show a placeholder
-    setTimeout(() => {
-      setPurchasing(false);
-      onClose();
-    }, 1000);
+  const handlePurchase = () => {
+    toast({
+      title: "Coming soon",
+      description: "Stripe payments are being integrated. Check back shortly!",
+    });
+    onClose();
   };
 
   const pkg = PACKAGES.find((p) => p.id === selected);
@@ -85,13 +84,12 @@ export default function CreditTopUpModal({ open, onClose, creditsRemaining }: Cr
         <div className="mt-5 pt-4 border-t border-border">
           <Button
             onClick={handlePurchase}
-            disabled={purchasing}
             className="w-full bg-accent text-accent-foreground hover:bg-accent/90"
           >
-            {purchasing ? "Processing..." : `Buy ${pkg?.credits} credits for £${pkg?.price}`}
+            Buy {pkg?.credits} credits for £{pkg?.price}
           </Button>
           <p className="text-[11px] text-center text-muted-foreground mt-2">
-            One-time purchase · Powered by Stripe
+            One-time purchase · Stripe integration coming soon
           </p>
         </div>
       </DialogContent>

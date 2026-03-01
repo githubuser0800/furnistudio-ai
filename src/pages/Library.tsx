@@ -7,6 +7,17 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Image as ImageIcon,
   Download,
@@ -121,6 +132,8 @@ export default function Library() {
   const [newFolderName, setNewFolderName] = useState("New Folder");
   const [newFolderColor, setNewFolderColor] = useState(FOLDER_COLORS[0]);
   const [recentImages, setRecentImages] = useState<Array<{ id: string; url: string; name: string; type: "upload" | "generated" }>>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: "folder" | "bulk"; id?: string } | null>(null);
   const { toast } = useToast();
 
   const fetchData = useCallback(async () => {
@@ -129,9 +142,9 @@ export default function Library() {
 
     const [{ data: foldersData }, { data: imagesData }, { data: jobsData }, { data: setsData }] = await Promise.all([
       supabase.from("folders" as any).select("*").eq("user_id", user.id).order("name"),
-      supabase.from("images").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
-      supabase.from("jobs").select("*").eq("user_id", user.id).eq("status", "completed").order("created_at", { ascending: false }),
-      supabase.from("product_sets" as any).select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
+      supabase.from("images").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(50),
+      supabase.from("jobs").select("*").eq("user_id", user.id).eq("status", "completed").order("created_at", { ascending: false }).limit(50),
+      supabase.from("product_sets" as any).select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(50),
     ]);
 
     // Build folder items with counts
@@ -228,6 +241,7 @@ export default function Library() {
         setRecentImages(recent.slice(0, 10));
       }
     }
+    setIsLoading(false);
   }, [currentFolderId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -259,10 +273,8 @@ export default function Library() {
   };
 
   const handleDeleteFolder = async (folderId: string) => {
-    // Move contents to parent (unfiled)
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    // Use raw queries to update folder_id since it's not yet in generated types
     const supabaseAny = supabase as any;
     await Promise.all([
       supabaseAny.from("images").update({ folder_id: null }).eq("folder_id", folderId),
@@ -271,6 +283,7 @@ export default function Library() {
     ]);
     await supabase.from("folders" as any).delete().eq("id", folderId);
     if (currentFolderId === folderId) setCurrentFolderId(null);
+    setDeleteConfirm(null);
     fetchData();
     toast({ title: "Folder deleted" });
   };
@@ -285,6 +298,7 @@ export default function Library() {
     const ids = Array.from(selectedItems);
     await supabase.from("images").delete().in("id", ids);
     setSelectedItems(new Set());
+    setDeleteConfirm(null);
     fetchData();
     toast({ title: `${ids.length} item(s) deleted` });
   };
@@ -432,7 +446,7 @@ export default function Library() {
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button size="sm" variant="destructive" onClick={handleDeleteSelected}>
+            <Button size="sm" variant="destructive" onClick={() => setDeleteConfirm({ type: "bulk" })}>
               <Trash2 className="mr-1 h-3 w-3" /> Delete
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setSelectedItems(new Set())}>Clear</Button>
@@ -502,7 +516,7 @@ export default function Library() {
                             </div>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                        <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteFolder(folder.id)}>
+                        <DropdownMenuItem className="text-destructive" onClick={() => setDeleteConfirm({ type: "folder", id: folder.id })}>
                           <Trash2 className="mr-2 h-3 w-3" /> Delete
                         </DropdownMenuItem>
                       </DropdownMenuContent>
@@ -694,6 +708,36 @@ export default function Library() {
       {exportImage && (
         <ExportModal open={!!exportImage} onClose={() => setExportImage(null)} imageUrl={exportImage.url} imageName={exportImage.name} />
       )}
+
+      {/* Delete Confirmation Dialogs */}
+      <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => { if (!open) setDeleteConfirm(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {deleteConfirm?.type === "folder" ? "Delete folder?" : `Delete ${selectedItems.size} item(s)?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteConfirm?.type === "folder"
+                ? "The folder will be deleted but its contents will be moved to unfiled."
+                : "This will permanently delete the selected images. This cannot be undone."
+              }
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deleteConfirm?.type === "folder" && deleteConfirm.id) handleDeleteFolder(deleteConfirm.id);
+                else handleDeleteSelected();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <MobileBottomNav />
     </div>
   );

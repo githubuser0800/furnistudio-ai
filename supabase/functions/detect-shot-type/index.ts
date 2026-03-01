@@ -51,6 +51,9 @@ serve(async (req) => {
     if (!Array.isArray(image_ids) || image_ids.length === 0) {
       throw new Error("Missing image_ids array");
     }
+    if (image_ids.length > 50) {
+      throw new Error("Maximum 50 images per request");
+    }
 
     // Fetch image records
     const { data: images } = await supabaseAdmin

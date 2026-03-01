@@ -46,11 +46,72 @@ export default function ExportModal({ open, onClose, imageUrl, imageName, batchU
     return "jpg";
   };
 
+  const cropToAspectRatio = (img: HTMLImageElement, ratio: string, format: string, quality: number): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return reject(new Error("Canvas not supported"));
+
+      let targetW = img.naturalWidth;
+      let targetH = img.naturalHeight;
+
+      if (ratio === "1:1") {
+        const size = Math.min(targetW, targetH);
+        targetW = size;
+        targetH = size;
+      } else if (ratio === "16:9") {
+        targetH = Math.round(targetW * (9 / 16));
+        if (targetH > img.naturalHeight) {
+          targetH = img.naturalHeight;
+          targetW = Math.round(targetH * (16 / 9));
+        }
+      } else if (ratio === "9:16") {
+        targetW = Math.round(targetH * (9 / 16));
+        if (targetW > img.naturalWidth) {
+          targetW = img.naturalWidth;
+          targetH = Math.round(targetW * (16 / 9));
+        }
+      }
+
+      const sx = Math.round((img.naturalWidth - targetW) / 2);
+      const sy = Math.round((img.naturalHeight - targetH) / 2);
+
+      canvas.width = targetW;
+      canvas.height = targetH;
+      ctx.drawImage(img, sx, sy, targetW, targetH, 0, 0, targetW, targetH);
+
+      const mimeType = format === "PNG" ? "image/png" : format === "WebP" ? "image/webp" : "image/jpeg";
+      canvas.toBlob(
+        (blob) => (blob ? resolve(blob) : reject(new Error("Export failed"))),
+        mimeType,
+        quality / 100,
+      );
+    });
+  };
+
   const downloadSingle = async (url: string, name: string, ext: string) => {
     const resp = await fetch(url);
-    const blob = await resp.blob();
+    const originalBlob = await resp.blob();
+
+    const preset = PRESETS.find((p) => p.id === selectedPreset);
+    const aspectRatio = preset ? "original" : customAspect;
+    const format = preset ? preset.format : customFormat;
+    const quality = preset ? preset.quality : 100;
+
+    let downloadBlob = originalBlob;
+
+    if (aspectRatio !== "original" || format !== "JPEG") {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      const blobUrl = URL.createObjectURL(originalBlob);
+      img.src = blobUrl;
+      await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; });
+      URL.revokeObjectURL(blobUrl);
+      downloadBlob = await cropToAspectRatio(img, aspectRatio, format, quality);
+    }
+
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
+    a.href = URL.createObjectURL(downloadBlob);
     a.download = `${name.replace(/\.[^.]+$/, "")}.${ext}`;
     document.body.appendChild(a);
     a.click();

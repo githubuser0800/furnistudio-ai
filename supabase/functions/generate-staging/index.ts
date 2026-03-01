@@ -662,6 +662,21 @@ serve(async (req) => {
       master_background_path, // NEW: storage path of the master background image
     } = await req.json();
 
+    // Input validation
+    if (!image_id) throw new Error("Missing image_id");
+    const validResolutions = ["1k", "2k", "4k"];
+    if (resolution && !validResolutions.includes(resolution)) {
+      throw new Error("Invalid resolution. Must be '1k', '2k', or '4k'");
+    }
+    const validAspectRatios = ["1:1", "16:9", "9:16", "4:3", "3:4"];
+    if (aspect_ratio && !validAspectRatios.includes(aspect_ratio)) {
+      throw new Error("Invalid aspect_ratio");
+    }
+    const validAngles = ["standard", "elevated", "low_angle", "side_profile", "corner_view"];
+    if (camera_angle && !validAngles.includes(camera_angle)) {
+      throw new Error("Invalid camera_angle");
+    }
+
     const isBatch = typeof batch_index === "number" && typeof batch_total === "number" && batch_total > 1;
     const isFirstInBatch = isBatch && batch_index === 0;
     const isSubsequentInBatch = isBatch && batch_index > 0;
@@ -815,9 +830,6 @@ serve(async (req) => {
       }
     );
 
-    console.log("=== RESOLUTION AUDIT ===");
-    console.log("1. REQUESTED: model=" + geminiModel + ", imageConfig.imageSize='4K'");
-
     if (!aiResponse.ok) {
       const errText = await aiResponse.text();
       console.error("Gemini API error:", aiResponse.status, errText);
@@ -838,10 +850,7 @@ serve(async (req) => {
       throw new Error("AI generation failed: " + errText.substring(0, 200));
     }
 
-    console.log("2. API RESPONSE status:", aiResponse.status);
-
     const aiResult = await aiResponse.json();
-    console.log("Gemini response preview:", JSON.stringify(aiResult).substring(0, 500));
 
     // Extract generated image from Gemini native response format
     let generatedBase64: string | null = null;
@@ -873,34 +882,7 @@ serve(async (req) => {
       outputBytes[i] = binaryString.charCodeAt(i);
     }
 
-    // Log actual image dimensions by parsing PNG/JPEG header
-    console.log("3. IMAGE RETURNED by API:");
-    console.log("   MIME type:", generatedMimeType);
-    console.log("   Base64 length:", generatedBase64.length, "chars");
-    console.log("   Decoded size:", outputBytes.length, "bytes (~", Math.round(outputBytes.length / 1024), "KB)");
-    
-    // Parse actual pixel dimensions from image header
-    if (outputBytes[0] === 0x89 && outputBytes[1] === 0x50) {
-      // PNG: width at bytes 16-19, height at bytes 20-23 (big-endian)
-      const width = (outputBytes[16] << 24) | (outputBytes[17] << 16) | (outputBytes[18] << 8) | outputBytes[19];
-      const height = (outputBytes[20] << 24) | (outputBytes[21] << 16) | (outputBytes[22] << 8) | outputBytes[23];
-      console.log("   ACTUAL PIXEL DIMENSIONS (PNG):", width, "x", height);
-    } else if (outputBytes[0] === 0xFF && outputBytes[1] === 0xD8) {
-      // JPEG: scan for SOF0 marker (0xFF 0xC0) to find dimensions
-      let jpegWidth = 0, jpegHeight = 0;
-      for (let i = 2; i < outputBytes.length - 8; i++) {
-        if (outputBytes[i] === 0xFF && (outputBytes[i+1] === 0xC0 || outputBytes[i+1] === 0xC2)) {
-          jpegHeight = (outputBytes[i+5] << 8) | outputBytes[i+6];
-          jpegWidth = (outputBytes[i+7] << 8) | outputBytes[i+8];
-          break;
-        }
-      }
-      console.log("   ACTUAL PIXEL DIMENSIONS (JPEG):", jpegWidth, "x", jpegHeight);
-    } else {
-      console.log("   Unknown image format, first bytes:", outputBytes[0], outputBytes[1]);
-    }
-
-    console.log("4. SAVING TO STORAGE as:", outputPath, "contentType: image/png (no compression/downscaling applied)");
+    console.log("Image generated |", Math.round(outputBytes.length / 1024), "KB |", generatedMimeType);
 
     const { error: uploadErr } = await supabaseAdmin.storage
       .from("furniture-images")
