@@ -57,12 +57,38 @@ serve(async (req) => {
       );
     }
 
-    // Download the image
-    const { data: imgData, error: dlErr } = await supabaseAdmin.storage
-      .from("furniture-images")
-      .download(image_path);
+    // Download the image - handle both storage paths and full/signed URLs
+    console.log("Attempting to download image_path:", image_path);
+    
+    let imgData: Blob | null = null;
+    
+    if (image_path.startsWith("http")) {
+      // It's a full URL (signed URL or public URL) - fetch directly
+      console.log("Detected URL, fetching directly");
+      const resp = await fetch(image_path);
+      if (!resp.ok) {
+        console.error("Direct fetch failed:", resp.status, await resp.text());
+        throw new Error("Failed to download image from URL");
+      }
+      imgData = await resp.blob();
+    } else {
+      // It's a storage path - strip bucket name prefix if present
+      let storagePath = image_path;
+      if (storagePath.startsWith("furniture-images/")) {
+        storagePath = storagePath.replace("furniture-images/", "");
+      }
+      console.log("Downloading from storage path:", storagePath);
+      const { data, error: dlErr } = await supabaseAdmin.storage
+        .from("furniture-images")
+        .download(storagePath);
+      if (dlErr || !data) {
+        console.error("Storage download error:", dlErr?.message || "no data");
+        throw new Error("Failed to download image: " + (dlErr?.message || "no data"));
+      }
+      imgData = data;
+    }
 
-    if (dlErr || !imgData) throw new Error("Failed to download image");
+    if (!imgData) throw new Error("Failed to download image");
 
     const imgBytes = new Uint8Array(await imgData.arrayBuffer());
     const base64Img = base64Encode(imgBytes);
