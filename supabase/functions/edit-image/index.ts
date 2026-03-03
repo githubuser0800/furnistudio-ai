@@ -151,33 +151,63 @@ serve(async (req) => {
 
     console.log("Edit request | job:", job_id, "| instruction:", edit_instruction);
 
-    const geminiModel = "gemini-2.0-flash-exp";
-    const aiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: geminiParts }],
-          generationConfig: {
-            temperature: 0.3,
-            responseModalities: ["TEXT", "IMAGE"],
-          },
-        }),
-      }
-    );
+    const candidateModels = [
+      "gemini-2.5-flash-image",
+      "gemini-2.5-flash-image-preview",
+      "gemini-2.0-flash-preview-image-generation",
+      "gemini-2.5-flash",
+    ];
 
-    if (!aiResponse.ok) {
-      const errText = await aiResponse.text();
-      console.error("Gemini API error:", aiResponse.status, errText);
-      if (aiResponse.status === 429) {
+    let aiResponse: Response | null = null;
+    let usedModel: string | null = null;
+    let aiErrorStatus = 500;
+    let aiErrorText = "No response from AI provider";
+
+    for (const geminiModel of candidateModels) {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: geminiParts }],
+            generationConfig: {
+              temperature: 0.3,
+              responseModalities: ["TEXT", "IMAGE"],
+            },
+          }),
+        }
+      );
+
+      if (response.ok) {
+        aiResponse = response;
+        usedModel = geminiModel;
+        break;
+      }
+
+      const errText = await response.text();
+      aiErrorStatus = response.status;
+      aiErrorText = errText;
+
+      if (response.status === 404 && /not found|not supported/i.test(errText)) {
+        console.warn(`Gemini model unavailable: ${geminiModel}. Trying fallback.`);
+        continue;
+      }
+      break;
+    }
+
+    if (!aiResponse) {
+      console.error("Gemini API error:", aiErrorStatus, aiErrorText);
+      if (aiErrorStatus === 429) {
         return new Response(
           JSON.stringify({ error: "AI service rate limited. Please try again shortly." }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      throw new Error("AI editing failed: " + errText.substring(0, 200));
+      throw new Error("AI editing failed: " + aiErrorText.substring(0, 200));
     }
+
+    console.log("Gemini model used for edit:", usedModel);
 
     const aiResult = await aiResponse.json();
 
