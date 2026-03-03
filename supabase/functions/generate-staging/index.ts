@@ -35,6 +35,7 @@ function pickImperfections(count = 2): string[] {
 
 // ── Camera Angle Prompts (full sentences, no keyword tags) ──
 const CAMERA_ANGLE_PROMPTS: Record<string, string> = {
+  eye_level: "The camera is positioned at eye level, looking straight on at the furniture piece, creating a direct and honest perspective that a customer would see in a showroom.",
   standard: "The camera is positioned at eye level, looking straight on at the furniture piece, creating a direct and honest perspective that a customer would see in a showroom.",
   elevated: "The camera is positioned slightly above at approximately a 30-degree downward angle, revealing the top surface and front of the furniture in a classic three-quarter overhead view.",
   low_angle: "The camera is positioned low to the ground, angled upward toward the furniture, making it appear grand and substantial with an aspirational quality.",
@@ -672,7 +673,7 @@ serve(async (req) => {
     if (aspect_ratio && !validAspectRatios.includes(aspect_ratio)) {
       throw new Error("Invalid aspect_ratio");
     }
-    const validAngles = ["standard", "elevated", "low_angle", "side_profile", "corner_view"];
+    const validAngles = ["eye_level", "standard", "elevated", "low_angle", "side_profile", "corner_view"];
     if (camera_angle && !validAngles.includes(camera_angle)) {
       throw new Error("Invalid camera_angle");
     }
