@@ -151,7 +151,7 @@ serve(async (req) => {
 
     console.log("Edit request | job:", job_id, "| instruction:", edit_instruction);
 
-    const geminiModel = "gemini-2.0-flash-exp-image-generation";
+    const geminiModel = "gemini-2.0-flash-exp";
     const aiResponse = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${GEMINI_API_KEY}`,
       {

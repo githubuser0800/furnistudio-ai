@@ -81,7 +81,7 @@ serve(async (req) => {
 
     console.log("Upscale request | scale:", scale, "| path:", image_path);
 
-    const geminiModel = "gemini-2.0-flash-exp-image-generation";
+    const geminiModel = "gemini-2.0-flash-exp";
     const aiResponse = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${GEMINI_API_KEY}`,
       {
