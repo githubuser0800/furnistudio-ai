@@ -121,33 +121,54 @@ serve(async (req) => {
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not configured");
 
-    // Build Gemini parts
-    const geminiParts: Array<Record<string, unknown>> = [
-      {
-        text: `EDIT THIS IMAGE. Keep the furniture product EXACTLY as is - same shape, color, materials, texture, position. Do NOT alter the furniture piece in any way. Only modify: ${edit_instruction}. Maintain photorealistic quality throughout.`,
-      },
-      {
-        inlineData: { mimeType: genMime, data: base64Gen },
-      },
-    ];
+    // Build Gemini parts — product reference FIRST for strongest anchoring
+    const geminiParts: Array<Record<string, unknown>> = [];
 
-    // Add product reference if available
+    // 1. Add product reference image first if available (anchors the model)
     if (productParts.length > 0) {
-      geminiParts.push({
-        text: "PRODUCT REFERENCE: This is the original furniture product. Keep it EXACTLY as is - same shape, color, materials, position. Only modify the environment as instructed.",
-      });
-      // productParts was built for OpenAI format, extract the base64 data
       const prodPart = productParts.find((p: any) => p.type === "image_url");
       if (prodPart) {
         const prodUrl = (prodPart as any).image_url?.url as string;
         const prodMatch = prodUrl?.match(/^data:([^;]+);base64,(.+)$/s);
         if (prodMatch) {
           geminiParts.push({
+            text: [
+              "PRODUCT REFERENCE IMAGE (DO NOT ALTER THIS PRODUCT):",
+              "Study this original product photograph carefully. Every detail must be preserved exactly:",
+              "- Exact silhouette, proportions, and dimensions",
+              "- All materials, textures, and surface finishes (fabric weave, wood grain, metal brushing)",
+              "- Precise colors, tones, and any color gradients or patina",
+              "- Hardware, stitching, buttons, legs, arms — every component",
+              "- The way light interacts with surfaces (e.g., velvet absorbs light, leather reflects)",
+              "This product must appear IDENTICAL in the edited output.",
+            ].join("\n"),
+          });
+          geminiParts.push({
             inlineData: { mimeType: prodMatch[1], data: prodMatch[2] },
           });
         }
       }
     }
+
+    // 2. Add the current staged image to edit
+    geminiParts.push({
+      text: [
+        "IMAGE TO EDIT (modify ONLY the environment, NEVER the product):",
+        "This is the current staged photograph. The furniture product in this image must remain pixel-perfect — same position, angle, scale, shape, color, material, texture, and every visible detail.",
+        "",
+        `EDIT INSTRUCTIONS: ${edit_instruction}`,
+        "",
+        "STRICT RULES:",
+        "1. The furniture product must be IDENTICAL to the product reference — do not redraw, reshape, recolor, or reinterpret it in any way.",
+        "2. Only modify the surrounding environment (walls, floor, lighting, props, background) as instructed.",
+        "3. Maintain physically accurate shadows and reflections consistent with the product's position.",
+        "4. Keep photorealistic quality — subtle lens imperfections, natural lighting falloff, realistic material behavior.",
+        "5. If the edit instruction conflicts with product preservation, ALWAYS prioritize keeping the product unchanged.",
+      ].join("\n"),
+    });
+    geminiParts.push({
+      inlineData: { mimeType: genMime, data: base64Gen },
+    });
 
     console.log("Edit request | job:", job_id, "| instruction:", edit_instruction);
 
