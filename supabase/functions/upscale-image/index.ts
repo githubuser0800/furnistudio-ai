@@ -98,9 +98,6 @@ serve(async (req) => {
             temperature: 0.3,
             responseModalities: ["TEXT", "IMAGE"],
           },
-          imageConfig: {
-            imageSize: "4K",
-          },
         }),
       }
     );
