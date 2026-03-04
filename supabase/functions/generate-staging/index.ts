@@ -835,6 +835,8 @@ serve(async (req) => {
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not configured");
 
+    const generationStartMs = Date.now();
+
     console.log(
       "Calling DIRECT Gemini API |",
       isSubsequentInBatch ? `EDIT into master (${batch_index + 1}/${batch_total})` : isFirstInBatch ? `MASTER generation (1/${batch_total})` : "single",
@@ -849,8 +851,10 @@ serve(async (req) => {
 
     // ── Build Gemini API parts ──
     let parts: Array<Record<string, unknown>>;
+    let debugPromptPath: string;
 
     if (isSubsequentInBatch && base64Master) {
+      debugPromptPath = "buildEditingPrompt";
       // ═══ IMAGES 2+: Master background + product + all reference images + editing prompt ═══
       parts = [
         { text: `${analysisPrefix}EDITING TASK: Image 1 is the MASTER BACKGROUND room to preserve exactly. Image 2 is the PRODUCT to place into it. Additional images show the SAME product from other angles — use them to understand every detail. Keep the room pixel-perfect identical. Only replace the furniture.` },
@@ -860,6 +864,7 @@ serve(async (req) => {
         { text: prompt },
       ];
     } else {
+      debugPromptPath = template_id === "custom" ? "buildCustomPrompt" : "buildTemplatePrompt";
       // ═══ IMAGE 1 or SINGLE: Standard generation with all references ═══
       const refIntro = additionalRefParts.length > 0
         ? `${analysisPrefix}${PRODUCT_PRESERVATION}\n\nCRITICAL: The following ${1 + additionalRefParts.length} images show the SAME furniture product from different angles. Use ALL of them as reference to accurately reproduce this EXACT product. Only the background environment changes.`
@@ -871,6 +876,16 @@ serve(async (req) => {
         { text: prompt },
       ];
     }
+
+    // ── Debug logging: log parts array summary ──
+    const debugPartsLog = parts.map((p: any) => {
+      if (p.text) return { type: "text", length: p.text.length, preview: p.text.substring(0, 80) + (p.text.length > 80 ? "..." : "") };
+      if (p.inlineData) return { type: "inlineData", mimeType: p.inlineData.mimeType, size: `${Math.round(p.inlineData.data.length * 0.75 / 1024)}KB` };
+      return { type: "unknown" };
+    });
+    const shotLabel = label || "single";
+    const shotNum = typeof batch_index === "number" ? `${batch_index + 1}/${batch_total}` : "1/1";
+    console.log(`[SHOT DEBUG] Shot ${shotNum} "${shotLabel}"\n  Parts:`, JSON.stringify(debugPartsLog, null, 2), `\n  Master BG: ${master_background_path || "none"}`);
 
     const candidateModels = [
       "gemini-2.5-flash-image",
@@ -939,6 +954,7 @@ serve(async (req) => {
     }
 
     console.log("Gemini model used:", usedModel);
+    const generationTimeMs = Date.now() - generationStartMs;
 
     const aiResult = await aiResponse.json();
 
@@ -1018,14 +1034,51 @@ serve(async (req) => {
       isFirstInBatch ? `(MASTER - batch 1/${batch_total})` : isBatch ? `(EDIT - batch ${batch_index + 1}/${batch_total})` : ""
     );
 
+    // ── Build debug object ──
+    const textParts = parts.filter((p: any) => p.text);
+    const imageParts = parts.filter((p: any) => p.inlineData);
+    const finishReason = aiResult.candidates?.[0]?.finishReason || "UNKNOWN";
+    const safetyRatings = aiResult.candidates?.[0]?.safetyRatings || [];
+    const usageMetadata = aiResult.usageMetadata || {};
+
+    const debugInfo = {
+      final_prompt: prompt,
+      model_used: usedModel,
+      num_reference_images: 1 + additionalRefParts.length,
+      product_analysis_included: !!product_analysis,
+      product_analysis_length: product_analysis ? product_analysis.length : 0,
+      product_analysis_preview: product_analysis ? product_analysis.substring(0, 200) : null,
+      label: label || null,
+      camera_angle: camera_angle || null,
+      master_background_used: !!(isSubsequentInBatch && master_background_path),
+      master_background_path: master_background_path || null,
+      prompt_path: debugPromptPath,
+      custom_prompt_included: !!custom_prompt,
+      custom_prompt_value: custom_prompt || null,
+      total_parts_count: parts.length,
+      image_parts_count: imageParts.length,
+      text_parts_count: textParts.length,
+      generation_time_ms: generationTimeMs,
+      gemini_finish_reason: finishReason,
+      gemini_safety_ratings: safetyRatings,
+      gemini_token_count: {
+        prompt: usageMetadata.promptTokenCount || 0,
+        output: usageMetadata.candidatesTokenCount || 0,
+        total: usageMetadata.totalTokenCount || 0,
+      },
+      batch_index: batch_index ?? null,
+      batch_total: batch_total ?? null,
+    };
+
     return new Response(
       JSON.stringify({
         success: true,
         job_id: job.id,
         output_url: signedUrl?.signedUrl || null,
-        output_path: outputPath, // storage path for master background reuse
+        output_path: outputPath,
         credits_remaining: profile.credits_remaining - creditsNeeded,
         master_background_path: masterPath || null,
+        debug: debugInfo,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

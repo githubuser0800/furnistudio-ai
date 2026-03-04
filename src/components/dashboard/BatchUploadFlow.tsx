@@ -19,6 +19,9 @@ import {
   Save,
   LayoutGrid,
   RotateCcw,
+  Bug,
+  Copy,
+  ChevronDown,
 } from "lucide-react";
 import StyleSelectionModal from "./StyleSelectionModal";
 import ExportModal from "./ExportModal";
@@ -82,6 +85,31 @@ interface StagedFile {
   detectedLabel?: string;
 }
 
+interface ShotDebugInfo {
+  final_prompt: string;
+  model_used: string;
+  num_reference_images: number;
+  product_analysis_included: boolean;
+  product_analysis_length: number;
+  product_analysis_preview: string | null;
+  label: string | null;
+  camera_angle: string | null;
+  master_background_used: boolean;
+  master_background_path: string | null;
+  prompt_path: string;
+  custom_prompt_included: boolean;
+  custom_prompt_value: string | null;
+  total_parts_count: number;
+  image_parts_count: number;
+  text_parts_count: number;
+  generation_time_ms: number;
+  gemini_finish_reason: string;
+  gemini_safety_ratings: any[];
+  gemini_token_count: { prompt: number; output: number; total: number };
+  batch_index: number | null;
+  batch_total: number | null;
+}
+
 interface BatchResult {
   imageId: string;
   label: string;
@@ -90,6 +118,7 @@ interface BatchResult {
   jobId: string;
   status: "pending" | "processing" | "completed" | "failed";
   shotId?: string;
+  debug?: ShotDebugInfo;
 }
 
 interface BatchUploadFlowProps {
@@ -137,6 +166,10 @@ export default function BatchUploadFlow({
     allImageIds: string[];
     totalShots: number;
   } | null>(null);
+
+  // Debug mode state
+  const [debugMode, setDebugMode] = useState(false);
+  const [expandedDebug, setExpandedDebug] = useState<Set<string>>(new Set());
 
   // Lightbox state
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -415,6 +448,7 @@ export default function BatchUploadFlow({
             jobId: data.job_id,
             status: "completed",
             shotId: shot.id,
+            debug: data.debug || undefined,
           });
         }
       } catch {
@@ -493,7 +527,7 @@ export default function BatchUploadFlow({
         setBatchResults((prev) =>
           prev.map((r) =>
             r.shotId === result.shotId
-              ? { ...r, status: "completed" as const, afterUrl: data.output_url, jobId: data.job_id }
+              ? { ...r, status: "completed" as const, afterUrl: data.output_url, jobId: data.job_id, debug: data.debug || undefined }
               : r
           )
         );
@@ -1037,6 +1071,28 @@ export default function BatchUploadFlow({
           <Button variant="outline" size="sm" onClick={handleSaveToFolder} disabled={savingToFolder}>
             <FolderPlus className="mr-1.5 h-4 w-4" /> {savingToFolder ? "Saving..." : "Save to Folder"}
           </Button>
+          <Button
+            variant={debugMode ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => setDebugMode(!debugMode)}
+          >
+            <Bug className="mr-1.5 h-4 w-4" /> {debugMode ? "Hide Debug" : "Debug"}
+          </Button>
+          {debugMode && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const allDebug = batchResults
+                  .filter((r) => r.debug)
+                  .map((r) => ({ shotId: r.shotId, label: r.label, status: r.status, debug: r.debug }));
+                navigator.clipboard.writeText(JSON.stringify(allDebug, null, 2));
+                toast({ title: "Copied", description: "All debug info copied to clipboard" });
+              }}
+            >
+              <Copy className="mr-1.5 h-4 w-4" /> Copy All Debug
+            </Button>
+          )}
           <Button size="sm" onClick={onComplete}>Done</Button>
         </div>
       </div>
@@ -1126,6 +1182,56 @@ export default function BatchUploadFlow({
                     >
                       <RotateCcw className="mr-1 h-3 w-3" /> Retry
                     </Button>
+                  )}
+                </div>
+              )}
+              {/* Debug info expandable */}
+              {debugMode && r.debug && (
+                <div className="mt-2 border-t border-border pt-2">
+                  <button
+                    onClick={() => {
+                      const key = r.shotId || r.jobId || String(idx);
+                      setExpandedDebug((prev) => {
+                        const next = new Set(prev);
+                        next.has(key) ? next.delete(key) : next.add(key);
+                        return next;
+                      });
+                    }}
+                    className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground w-full"
+                  >
+                    <Bug className="h-3 w-3" />
+                    <span>Debug Info</span>
+                    <ChevronDown className={`h-3 w-3 ml-auto transition-transform ${expandedDebug.has(r.shotId || r.jobId || String(idx)) ? "rotate-180" : ""}`} />
+                  </button>
+                  {expandedDebug.has(r.shotId || r.jobId || String(idx)) && (
+                    <div className="mt-1.5 space-y-1 text-[9px] font-mono text-muted-foreground max-h-60 overflow-y-auto">
+                      <div><span className="text-foreground">Model:</span> {r.debug.model_used}</div>
+                      <div><span className="text-foreground">Time:</span> {r.debug.generation_time_ms}ms</div>
+                      <div><span className="text-foreground">Label:</span> {r.debug.label}</div>
+                      <div><span className="text-foreground">Camera:</span> {r.debug.camera_angle}</div>
+                      <div><span className="text-foreground">Prompt path:</span> {r.debug.prompt_path}</div>
+                      <div><span className="text-foreground">Ref images:</span> {r.debug.num_reference_images}</div>
+                      <div><span className="text-foreground">Parts:</span> {r.debug.total_parts_count} total ({r.debug.image_parts_count} img, {r.debug.text_parts_count} text)</div>
+                      <div><span className="text-foreground">Analysis:</span> {r.debug.product_analysis_included ? `Yes (${r.debug.product_analysis_length} chars)` : "SKIPPED"}</div>
+                      {r.debug.product_analysis_preview && (
+                        <div className="break-words"><span className="text-foreground">Analysis preview:</span> {r.debug.product_analysis_preview}</div>
+                      )}
+                      <div><span className="text-foreground">Master BG:</span> {r.debug.master_background_used ? r.debug.master_background_path : "No"}</div>
+                      <div><span className="text-foreground">Custom prompt:</span> {r.debug.custom_prompt_included ? "Yes" : "No"}</div>
+                      {r.debug.custom_prompt_value && (
+                        <div className="break-words"><span className="text-foreground">Custom prompt text:</span> {r.debug.custom_prompt_value.substring(0, 200)}...</div>
+                      )}
+                      <div><span className="text-foreground">Finish:</span> {r.debug.gemini_finish_reason}</div>
+                      <div><span className="text-foreground">Tokens:</span> prompt={r.debug.gemini_token_count.prompt} output={r.debug.gemini_token_count.output}</div>
+                      <div className="pt-1 border-t border-border">
+                        <details>
+                          <summary className="cursor-pointer text-foreground">Full prompt ({r.debug.final_prompt.length} chars)</summary>
+                          <pre className="mt-1 whitespace-pre-wrap break-words text-[8px] max-h-40 overflow-y-auto bg-muted p-1.5 rounded">
+                            {r.debug.final_prompt}
+                          </pre>
+                        </details>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
