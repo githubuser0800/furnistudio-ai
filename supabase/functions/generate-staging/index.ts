@@ -411,62 +411,62 @@ const TEMPLATES: Record<string, TemplateConfig> = {
     lightSource: "A large window on the LEFT side",
     lightQuality: "abundant natural task lighting ideal for a productive workspace",
     lightDirection: "positioned on the LEFT side, illuminating the desk area directly",
-    shadowDirection: "Soft clean shadows from the left window light fall to the RIGHT across the desk area, providing natural dimension without harsh contrast",
-    propsPositioned: "A closed laptop placed to one side of the desk. A designer desk lamp switched off positioned for task lighting. A succulent in a concrete pot on the desk surface. A quality notebook placed nearby. Bookshelf softly out of focus in the background",
-    materialBehavior: "The light ash floor provides a warm neutral base reflecting gentle upward light while the desk surface shows subtle reflections from the window and the concrete pot texture is precisely rendered",
-    lightingSetup: "Bright natural window light from the left as primary key, ambient bounce from white walls as fill, gentle depth of field softening the bookshelf background",
-    styleReference: "the clean aspirational aesthetic of Vitsoe product catalogues",
-    lensSpec: "Shot with a 35mm lens at f/4. Gentle depth of field softening the bookshelf background. Concrete pot texture precisely rendered at full resolution",
-    atmosphere: "bright productive modern workspace in clear morning light",
+    shadowDirection: "Clean gentle shadows fall to the RIGHT from the task lighting, creating subtle dimensional definition without drama",
+    propsPositioned: "Open shelving on the back wall with styled books and small plants. A desk lamp turned off but present. A ceramic cup and stationery in a leather organiser on the desk. A woven rug beneath",
+    materialBehavior: "The light ash floor reflects the bright task lighting neutrally while the shelving objects catch small highlights and the rug provides warmth contrast against the cool ash tones",
+    lightingSetup: "Abundant natural task light from the left window as bright key, white wall bounce as even fill, gentle subtle shadows giving just enough depth",
+    styleReference: "the bright productive aesthetic of Muji workspace and Kinfolk magazine",
+    lensSpec: "Shot with a 35mm lens at f/4. Clean balanced exposure. Subtle depth of field placing focus on the primary furniture",
+    atmosphere: "bright productive and inspiring modern workspace",
   },
   creative_studio: {
-    mood: "inspiring, artistic, and authentically creative",
-    contextAnchor: "a studio visit feature from The Design Files",
-    roomDescription: "a creative studio space with white-painted brick walls showing authentic texture, polished concrete floor with patina, and large black-framed industrial windows flooding the space with north light. A vintage anglepoise lamp provides warm accent lighting",
-    wallDescription: "White-painted brick walls with visible mortar lines and industrial texture that catches the north light beautifully, creating subtle shadow patterns along each brick edge",
-    flooring: "polished concrete with patina",
-    flooringDirection: "with a worked-in industrial surface showing subtle tonal variation, marks of use, and a gentle sheen from the window light",
-    lightSource: "Large black-framed industrial windows flooding the space with north light, plus a warm vintage anglepoise lamp",
-    lightQuality: "bright even north light flooding the space with warm anglepoise accent creating creative atmosphere",
-    lightDirection: "positioned on the LEFT side through large black-framed industrial windows",
-    shadowDirection: "Industrial window-frame shadow patterns fall across the floor to the RIGHT, with bright even fill throughout and warm anglepoise creating a small golden pool on the work surface",
-    propsPositioned: "Mood boards leaning against the rear brick wall. Art books stacked on nearby surfaces. Drawing materials arranged with authentic casualness. An overgrown houseplant in a large pot adding life to the space",
-    materialBehavior: "The polished concrete floor shows patina and subtle reflections of the industrial window light while the white brick walls create textured shadow patterns as the north light grazes across each brick edge",
-    lightingSetup: "Bright north light from industrial windows as key, even white brick bounce as fill, warm vintage anglepoise as creative accent, authentic worked-in atmosphere",
-    styleReference: "the honest creative aesthetic of Rory Gardiner interior photography",
-    lensSpec: "Shot with a 35mm lens with handheld quality. Gentle lens flare from the brightest window point. Authentic worked-in feel throughout",
-    atmosphere: "inspiring bright industrial creative space with authentic character",
+    mood: "edgy, industrial, and design-forward",
+    contextAnchor: "a converted warehouse studio from Dezeen",
+    roomDescription: "a converted warehouse creative studio with exposed brick wall on the LEFT showing original mortar texture, polished concrete floor with industrial character, and large steel-framed factory windows on the RIGHT flooding the space with directional north light",
+    wallDescription: "Exposed brick wall on the LEFT with original mortar lines, paint remnants, and authentic warehouse patina that adds industrial authenticity and tactile warmth",
+    flooring: "polished concrete",
+    flooringDirection: "with a smooth industrial surface showing subtle aggregate texture, micro-cracks, and catch reflections under the factory window light",
+    lightSource: "Large steel-framed factory windows on the RIGHT",
+    lightQuality: "directional north light with industrial clarity creating defined shadows and honest material rendition",
+    lightDirection: "positioned on the RIGHT side through steel-framed factory windows",
+    shadowDirection: "Defined industrial shadows from steel window frames cross the polished concrete floor to the LEFT, with brick wall texture creating complex micro-shadows",
+    propsPositioned: "A vintage Anglepoise desk lamp on a surface. Architecture and design books stacked on the floor leaning against the brick wall. A concrete planter with an architectural cactus. A framed blueprint or technical drawing propped against the wall",
+    materialBehavior: "The polished concrete floor shows subtle reflections of the steel window frames while the exposed brick creates rich textured shadows and the overall palette stays muted and industrial",
+    lightingSetup: "Strong directional north light from the right factory windows as key, ambient bounce from the polished concrete floor and brick wall providing warm fill, industrial clarity without artificial softness",
+    styleReference: "the raw industrial aesthetic of Cereal magazine studio features",
+    lensSpec: "Shot with a 28mm lens at f/5.6. Slight barrel distortion at edges. Concrete floor micro-texture visible at full resolution",
+    atmosphere: "edgy design-forward converted warehouse with industrial north light",
   },
 
-  // ═══════════ STUDIO / PRODUCT ═══════════
+  // ═══════════ STUDIO ═══════════
   white_background: {
-    mood: "clean, professional, and product-focused",
-    contextAnchor: "an Amazon UK product listing hero image",
-    roomDescription: "a pure white studio background at RGB 255 255 255 with perfectly even softbox lighting from all sides eliminating harsh shadows, the furniture fills 85 percent of the frame perfectly centred with no visible horizon line or environment",
-    wallDescription: "Pure seamless white background with absolutely no visible edges, corners, or horizon lines",
-    flooring: "seamless white infinity curve",
-    flooringDirection: "that sweeps continuously from floor to background with no visible join, only a very subtle contact shadow for grounding",
-    lightSource: "Even softbox lighting from all sides",
-    lightQuality: "perfectly even soft light eliminating all harsh shadows while maintaining true material colours",
-    lightDirection: "positioned ALL AROUND the product from front, sides, and above",
-    shadowDirection: "A completely even white space with absolutely no directional shadows, only a very subtle contact shadow directly beneath the furniture for realistic grounding",
-    propsPositioned: "Absolutely nothing else in the frame. A completely empty pure white environment with only the furniture product visible, filling 85 percent of the frame",
-    materialBehavior: "Every material on the furniture is evenly lit revealing true colour and texture without any directional shadow bias, with perfect edge definition against the white background",
-    lightingSetup: "Professional multi-point studio softbox setup with key, fill, hair, and background lights creating zero-shadow product illumination with absolute white point on the background",
-    styleReference: "the clean product photography standards of John Lewis online catalogue",
-    lensSpec: "Shot with a 100mm lens at f/8. Perfect edge definition on the furniture. Absolute white point on background. Very subtle contact shadow for grounding",
-    atmosphere: "clinical professional studio product shot",
+    mood: "pure e-commerce, clinical perfection",
+    contextAnchor: "a product page on made.com or wayfair.co.uk",
+    roomDescription: "a professional white cyclorama studio with infinite white background curving from floor to wall. Three-point professional studio lighting creating clean defined shadows. No room features visible, only pure white background with the furniture as the sole element",
+    wallDescription: "Pure infinite white cyclorama background with no visible seam between floor and wall, curving seamlessly creating a clean void",
+    flooring: "white cyclorama floor",
+    flooringDirection: "seamlessly curving into the white background wall with no visible join line or horizon",
+    lightSource: "Professional three-point studio lighting setup",
+    lightQuality: "clean professional studio lighting with controlled shadows and perfect colour accuracy",
+    lightDirection: "Key light from the FRONT-LEFT at 45 degrees, fill light from the RIGHT, subtle rim light from BEHIND",
+    shadowDirection: "Clean controlled shadow falling to the RIGHT from the three-point setup, with subtle gradation and defined edges that ground the product",
+    propsPositioned: "Nothing. Pure white background with only the furniture product visible. The furniture is isolated as a sculptural object against the seamless white void",
+    materialBehavior: "Under the controlled three-point lighting, every material texture is revealed with precise accuracy: fabric weave, wood grain, metal finish, all rendered with perfect colour fidelity against the neutral white",
+    lightingSetup: "Professional three-point studio setup: key light from front-left at 45 degrees, fill light from right at 60% intensity for shadow control, rim backlight for clean edge separation from white background",
+    styleReference: "the pure clinical product photography of DFS and MADE.com product pages",
+    lensSpec: "Shot with an 85mm lens at f/8. Perfect sharpness corner to corner. Zero distortion. Clinical precision colour accuracy",
+    atmosphere: "pure clinical studio perfection for e-commerce",
   },
   grey_studio: {
-    mood: "professional, refined, and sculptural",
-    contextAnchor: "a Vitra or B and B Italia product catalogue photograph",
-    roomDescription: "a seamless medium grey 50 percent grey studio background paper with professional three-point lighting treating the furniture as sculpture, with the key light at front-left 45 degrees, fill light from the right softening shadows, and rim light behind separating the furniture from the background",
-    wallDescription: "Seamless medium grey 50 percent grey backdrop paper with no visible edges or horizon lines, showing subtle paper texture at full resolution",
-    flooring: "seamless grey studio backdrop paper",
-    flooringDirection: "that sweeps continuously from floor to background in a smooth grey curve with subtle paper texture visible",
-    lightSource: "Professional three-point lighting rig",
-    lightQuality: "professional studio lighting creating dimensional highlights and precisely controlled shadows treating the furniture as sculpture",
-    lightDirection: "Key light from FRONT-LEFT at 45 degrees, fill from the RIGHT, rim light from BEHIND",
+    mood: "refined, gallery-like, and sculptural",
+    contextAnchor: "a high-end furniture lookbook by B&B Italia",
+    roomDescription: "a professional studio with mid-grey seamless paper backdrop creating a refined gallery-like atmosphere. Three-point lighting setup with controlled shadows treating the furniture as a sculptural exhibit. No room features, just grey void and considered lighting",
+    wallDescription: "Mid-grey seamless paper backdrop creating a refined gallery-like atmosphere with subtle tonal graduation from centre to edges",
+    flooring: "grey seamless paper continuing from backdrop",
+    flooringDirection: "with paper curving from backdrop to floor seamlessly, showing subtle tonal variation",
+    lightSource: "Three-point professional studio lighting",
+    lightQuality: "refined sculpted studio light treating the furniture as a gallery exhibit with controlled dimensional shadows",
+    lightDirection: "Key light from the FRONT-LEFT at 45 degrees, soft fill from the RIGHT, rim light from BEHIND",
     shadowDirection: "Defined key shadow falls to the RIGHT with softened edges from the fill light, a crisp rim highlight behind separates the furniture clearly from the grey background",
     propsPositioned: "A completely empty studio environment with only the furniture product visible as sculpture against the grey backdrop",
     materialBehavior: "The three-point lighting reveals every material texture with dimensional highlights on curved surfaces and controlled shadow depth in recesses, with perfect colour accuracy under neutral grey light",
@@ -578,7 +578,7 @@ function buildCustomPrompt(
 [RESOLUTION]: Generate at the MAXIMUM possible resolution. Ultra high resolution output. Every detail must be crisp and sharp at full zoom.`;
 }
 
-// ── Build editing prompt for images 2+ using shot-type matching ──
+// ── Build editing prompt for images 2+ using shot-type matching (ROOM SHOTS ONLY) ──
 function buildEditingPrompt(
   label: string | undefined,
   batchIndex: number,
@@ -606,7 +606,7 @@ IMAGE 2 (PRODUCT REFERENCE): This is the furniture product to place INTO the roo
 - Match this product's shape, materials, colors, textures, and design details precisely
 - The reference image shows a ${label || "full product"} view of the product
 
-SHOT TYPE MATCHING: The output MUST match the framing and angle of the product reference image.
+SHOT TYPE MATCHING:
 ${shotType.framing}
 
 TASK: ${shotPrompt}
@@ -614,7 +614,7 @@ TASK: ${shotPrompt}
 - Only swap the furniture piece
 - Shadows and reflections update to match the new furniture position and the existing light sources
 - Contact shadows where the furniture meets the floor must match the room's lighting direction
-- The output framing must MATCH the input reference - if the reference is a close-up, output a close-up; if full product, output full product
+- The output framing must match the SHOT DIRECTION instructions above, not the reference image framing. The reference image is provided for PRODUCT IDENTITY only — use it to match the exact product appearance, not the camera angle.
 - Everything else stays IDENTICAL to Image 1
 
 This is image ${batchIndex + 1} of ${batchTotal} in a product photography set. All images must look like they were shot in the exact same room during the same photoshoot session.
@@ -625,6 +625,37 @@ ${PRODUCT_PRESERVATION}
 
 [ASPECT RATIO]: ${aspectRatio || "1:1"}.
 [RESOLUTION]: Generate at the MAXIMUM possible resolution. Ultra high resolution output.${customPrompt ? `\n\nADDITIONAL SHOT DIRECTION: ${customPrompt}` : ""}`;
+}
+
+// ── Build close-up prompt (independent generation, no master background) ──
+function buildCloseUpPrompt(
+  label: string | undefined,
+  numReferenceImages: number,
+  aspectRatio: string,
+  resolution: string,
+  customPrompt?: string
+): string {
+  const shotType = getShotType(label);
+  const imperfections = pickImperfections(2);
+
+  return `PRODUCT CLOSE-UP PHOTOGRAPHY
+
+You have ${numReferenceImages} reference image${numReferenceImages > 1 ? "s" : ""} of the SAME furniture product from different angles. Study ALL of them to understand every detail of this product.
+
+TASK: ${shotType.framing}
+
+${customPrompt ? `SPECIFIC SHOT DIRECTION: ${customPrompt}` : ""}
+
+BACKGROUND: Soft, blurred, neutral background. Use a shallow depth of field (f/2.8) so only the detail area is in sharp focus. The background should suggest a warm room environment (warm tones, natural light) but be completely out of focus. Do NOT show the full room or full furniture piece — this is a DETAIL shot filling the frame.
+
+The product detail must EXACTLY match the reference images — same material, colour, texture, stitching pattern, leg shape, hardware finish.
+
+${PRODUCT_PRESERVATION}
+
+[TECHNICAL FLAVOR]: Macro lens at f/2.8 equivalent. ${imperfections[0]}. ${imperfections[1]}.
+
+[ASPECT RATIO]: ${aspectRatio || "1:1"}.
+[RESOLUTION]: Generate at the MAXIMUM possible resolution. Ultra high resolution output.`;
 }
 
 
@@ -669,9 +700,10 @@ serve(async (req) => {
       batch_index,
       batch_total,
       master_background_path,
-      reference_image_ids, // Additional product image IDs for multi-angle reference
-      additional_image_ids, // All OTHER uploaded image IDs (besides primary image_id)
-      product_analysis, // Text description from analyse-product phase
+      reference_image_ids,
+      additional_image_ids,
+      product_analysis,
+      generation_strategy, // "closeup" for close-up shots that skip master BG
     } = await req.json();
 
     // Input validation
@@ -689,16 +721,22 @@ serve(async (req) => {
       throw new Error("Invalid camera_angle");
     }
 
+    const isCloseUpStrategy = generation_strategy === "closeup";
     const isBatch = typeof batch_index === "number" && typeof batch_total === "number" && batch_total > 1;
     const isFirstInBatch = isBatch && batch_index === 0;
-    const isSubsequentInBatch = isBatch && batch_index > 0;
+    // Close-up shots are NOT treated as "subsequent in batch" even if batch_index > 0
+    const isSubsequentInBatch = isBatch && batch_index > 0 && !isCloseUpStrategy;
 
     const templateConfig = TEMPLATES[template_id];
 
     // ── Build prompt ──
     let prompt: string;
 
-    if (isSubsequentInBatch && master_background_path) {
+    if (isCloseUpStrategy) {
+      // Close-up shots: independent generation, no master background
+      const numRefImages = 1 + (additional_image_ids?.length || 0);
+      prompt = buildCloseUpPrompt(label, numRefImages, aspect_ratio, resolution, custom_prompt);
+    } else if (isSubsequentInBatch && master_background_path) {
       // Images 2+: editing prompt with shot-type matching
       prompt = buildEditingPrompt(label, batch_index, batch_total, aspect_ratio, resolution, templateConfig || null, custom_prompt);
     } else if (template_id === "custom" && custom_prompt) {
@@ -775,7 +813,6 @@ serve(async (req) => {
     const productMimeType = imageRecord.filename?.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
 
     // ── Download additional reference images if provided ──
-    // Merge reference_image_ids and additional_image_ids into a single deduped set
     const allRefIds = new Set<string>();
     if (reference_image_ids && Array.isArray(reference_image_ids)) {
       reference_image_ids.forEach((id: string) => allRefIds.add(id));
@@ -783,7 +820,6 @@ serve(async (req) => {
     if (additional_image_ids && Array.isArray(additional_image_ids)) {
       additional_image_ids.forEach((id: string) => allRefIds.add(id));
     }
-    // Remove the primary image_id to avoid duplicates
     allRefIds.delete(image_id);
 
     const additionalRefParts: Array<Record<string, unknown>> = [];
@@ -813,7 +849,7 @@ serve(async (req) => {
       console.log(`Successfully loaded ${additionalRefParts.length} additional reference images`);
     }
 
-    // ── Download master background for images 2+ ──
+    // ── Download master background for room shots 2+ (NOT close-ups) ──
     let base64Master: string | null = null;
     let masterMimeType = "image/png";
     if (isSubsequentInBatch && master_background_path) {
@@ -839,7 +875,9 @@ serve(async (req) => {
 
     console.log(
       "Calling DIRECT Gemini API |",
-      isSubsequentInBatch ? `EDIT into master (${batch_index + 1}/${batch_total})` : isFirstInBatch ? `MASTER generation (1/${batch_total})` : "single",
+      isCloseUpStrategy ? `CLOSE-UP (independent)` :
+      isSubsequentInBatch ? `EDIT into master (${batch_index + 1}/${batch_total})` :
+      isFirstInBatch ? `MASTER generation (1/${batch_total})` : "single",
       "| template:", template_id,
       "| prompt length:", prompt.length
     );
@@ -853,7 +891,19 @@ serve(async (req) => {
     let parts: Array<Record<string, unknown>>;
     let debugPromptPath: string;
 
-    if (isSubsequentInBatch && base64Master) {
+    if (isCloseUpStrategy) {
+      debugPromptPath = "buildCloseUpPrompt";
+      // ═══ CLOSE-UP: Product images only, no master background ═══
+      const refIntro = additionalRefParts.length > 0
+        ? `${analysisPrefix}${PRODUCT_PRESERVATION}\n\nCRITICAL: The following ${1 + additionalRefParts.length} images show the SAME furniture product from different angles. Study ALL of them to accurately reproduce every detail of this EXACT product in the close-up.`
+        : `${analysisPrefix}${PRODUCT_PRESERVATION}\n\nStudy this reference image carefully to reproduce every detail of this EXACT product in the close-up.`;
+      parts = [
+        { text: refIntro },
+        { inlineData: { mimeType: productMimeType, data: base64Product } },
+        ...additionalRefParts,
+        { text: prompt },
+      ];
+    } else if (isSubsequentInBatch && base64Master) {
       debugPromptPath = "buildEditingPrompt";
       // ═══ IMAGES 2+: Master background + product + all reference images + editing prompt ═══
       parts = [
@@ -885,7 +935,7 @@ serve(async (req) => {
     });
     const shotLabel = label || "single";
     const shotNum = typeof batch_index === "number" ? `${batch_index + 1}/${batch_total}` : "1/1";
-    console.log(`[SHOT DEBUG] Shot ${shotNum} "${shotLabel}"\n  Parts:`, JSON.stringify(debugPartsLog, null, 2), `\n  Master BG: ${master_background_path || "none"}`);
+    console.log(`[SHOT DEBUG] Shot ${shotNum} "${shotLabel}" [strategy: ${isCloseUpStrategy ? "closeup" : isSubsequentInBatch ? "editing" : "standard"}]\n  Parts:`, JSON.stringify(debugPartsLog, null, 2), `\n  Master BG: ${master_background_path || "none"}`);
 
     const candidateModels = [
       "gemini-2.5-flash-image",
@@ -1031,7 +1081,9 @@ serve(async (req) => {
 
     console.log(
       "Generation complete. Job:", job.id,
-      isFirstInBatch ? `(MASTER - batch 1/${batch_total})` : isBatch ? `(EDIT - batch ${batch_index + 1}/${batch_total})` : ""
+      isCloseUpStrategy ? "(CLOSE-UP independent)" :
+      isFirstInBatch ? `(MASTER - batch 1/${batch_total})` :
+      isBatch ? `(EDIT - batch ${batch_index + 1}/${batch_total})` : ""
     );
 
     // ── Build debug object ──
@@ -1053,6 +1105,7 @@ serve(async (req) => {
       master_background_used: !!(isSubsequentInBatch && master_background_path),
       master_background_path: master_background_path || null,
       prompt_path: debugPromptPath,
+      generation_strategy: isCloseUpStrategy ? "closeup" : isSubsequentInBatch ? "editing" : "standard",
       custom_prompt_included: !!custom_prompt,
       custom_prompt_value: custom_prompt || null,
       total_parts_count: parts.length,

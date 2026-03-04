@@ -324,9 +324,15 @@ export default function BatchUploadFlow({
     setSelectedTemplateLabel(TEMPLATE_NAMES[templateId] || "Custom");
 
     const selectedShotItems = SEATING_SHOT_LIST.filter((s) => selectedShots.includes(s.id));
+    // Hero MUST always be index 0 (master shot). Then room shots sorted by number, then close-ups last.
     const shots = [...selectedShotItems].sort((a, b) => {
       if (a.id === "hero") return -1;
       if (b.id === "hero") return 1;
+      // Close-ups go after all room shots
+      const aIsCloseUp = a.group === "Close-Ups";
+      const bIsCloseUp = b.group === "Close-Ups";
+      if (aIsCloseUp && !bIsCloseUp) return 1;
+      if (!aIsCloseUp && bIsCloseUp) return -1;
       return a.number - b.number;
     });
 
@@ -379,7 +385,10 @@ export default function BatchUploadFlow({
       }
 
       try {
-        if (i > 0 && !masterBackgroundPath) {
+        const isCloseUp = shot.group === "Close-Ups";
+
+        // Room shots (not close-ups) after shot 1 need the master background
+        if (i > 0 && !isCloseUp && !masterBackgroundPath) {
           throw new Error("Missing master_background_path from shot 1 response");
         }
 
@@ -405,11 +414,14 @@ export default function BatchUploadFlow({
           camera_angle: shot.cameraAngle,
           ...(setId ? { set_id: setId } : {}),
           label: backendLabel,
-          batch_index: i,
+          batch_index: isCloseUp ? 0 : i, // Close-ups are independent (index 0)
           batch_total: shots.length,
-          ...(i > 0 && masterBackgroundPath
-            ? { master_background_path: masterBackgroundPath }
-            : {}),
+          // Close-ups: independent generation, no master background
+          ...(isCloseUp
+            ? { generation_strategy: "closeup" }
+            : i > 0 && masterBackgroundPath
+              ? { master_background_path: masterBackgroundPath }
+              : {}),
         };
 
         console.log(
@@ -492,6 +504,7 @@ export default function BatchUploadFlow({
     // Determine batch index from current results
     const shotIndex = batchResults.findIndex((r) => r.shotId === result.shotId);
     const isHero = shot.id === "hero";
+    const isCloseUp = shot.group === "Close-Ups";
 
     try {
       const shotPrompt = [shot.promptHint, SHOT_PROMPT_SUFFIX[shot.id]].filter(Boolean).join(". ");
@@ -505,11 +518,14 @@ export default function BatchUploadFlow({
         custom_prompt: shotPrompt,
         camera_angle: shot.cameraAngle,
         label: backendLabel,
-        batch_index: shotIndex >= 0 ? shotIndex : 0,
+        batch_index: isCloseUp ? 0 : (shotIndex >= 0 ? shotIndex : 0),
         batch_total: batchContext?.totalShots || batchResults.length,
-        ...(!isHero && batchContext?.masterBackgroundPath
-          ? { master_background_path: batchContext.masterBackgroundPath }
-          : {}),
+        // Close-ups: independent generation, no master background
+        ...(isCloseUp
+          ? { generation_strategy: "closeup" }
+          : !isHero && batchContext?.masterBackgroundPath
+            ? { master_background_path: batchContext.masterBackgroundPath }
+            : {}),
       };
 
       console.log(`[ShotList] Retry "${shot.label}" payload:`, payload);
@@ -608,12 +624,12 @@ export default function BatchUploadFlow({
         });
 
         if (error || data?.error) {
-          results.push({ imageId: f.imageId!, label: f.label, beforeUrl: f.preview, afterUrl: "", jobId: "", status: "failed" });
+          results.push({ imageId: f.imageId!, label: f.label, beforeUrl: f.preview, afterUrl: "", jobId: "", status: "failed", debug: data?.debug || undefined });
         } else if (data?.success) {
           currentCredits = data.credits_remaining;
           onCreditsChange(currentCredits);
           if (i === 0 && data.master_background_path) masterBackgroundPath = data.master_background_path;
-          results.push({ imageId: f.imageId!, label: f.label, beforeUrl: f.preview, afterUrl: data.output_url, jobId: data.job_id, status: "completed" });
+          results.push({ imageId: f.imageId!, label: f.label, beforeUrl: f.preview, afterUrl: data.output_url, jobId: data.job_id, status: "completed", debug: data.debug || undefined });
         }
       } catch {
         results.push({ imageId: f.imageId!, label: f.label, beforeUrl: f.preview, afterUrl: "", jobId: "", status: "failed" });
