@@ -662,6 +662,8 @@ serve(async (req) => {
       batch_total,
       master_background_path,
       reference_image_ids, // Additional product image IDs for multi-angle reference
+      additional_image_ids, // All OTHER uploaded image IDs (besides primary image_id)
+      product_analysis, // Text description from analyse-product phase
     } = await req.json();
 
     // Input validation
@@ -765,12 +767,21 @@ serve(async (req) => {
     const productMimeType = imageRecord.filename?.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
 
     // ── Download additional reference images if provided ──
+    // Merge reference_image_ids and additional_image_ids into a single deduped set
+    const allRefIds = new Set<string>();
+    if (reference_image_ids && Array.isArray(reference_image_ids)) {
+      reference_image_ids.forEach((id: string) => allRefIds.add(id));
+    }
+    if (additional_image_ids && Array.isArray(additional_image_ids)) {
+      additional_image_ids.forEach((id: string) => allRefIds.add(id));
+    }
+    // Remove the primary image_id to avoid duplicates
+    allRefIds.delete(image_id);
+
     const additionalRefParts: Array<Record<string, unknown>> = [];
-    if (reference_image_ids && Array.isArray(reference_image_ids) && reference_image_ids.length > 0) {
-      // Filter out the primary image_id to avoid duplicates
-      const extraIds = reference_image_ids.filter((rid: string) => rid !== image_id);
-      console.log(`Downloading ${extraIds.length} additional reference images`);
-      for (const refId of extraIds) {
+    if (allRefIds.size > 0) {
+      console.log(`Downloading ${allRefIds.size} additional reference images`);
+      for (const refId of allRefIds) {
         try {
           const { data: refRecord } = await supabaseAdmin
             .from("images")
@@ -823,22 +834,28 @@ serve(async (req) => {
       "| prompt length:", prompt.length
     );
 
+    // ── Build product analysis prefix if provided ──
+    const analysisPrefix = product_analysis
+      ? `PRODUCT REFERENCE DESCRIPTION (from analysing all uploaded photos): ${product_analysis}\nThe output MUST match this exact product.\n\n`
+      : "";
+
     // ── Build Gemini API parts ──
     let parts: Array<Record<string, unknown>>;
 
     if (isSubsequentInBatch && base64Master) {
-      // ═══ IMAGES 2+: Two images (master + product) with editing prompt ═══
+      // ═══ IMAGES 2+: Master background + product + all reference images + editing prompt ═══
       parts = [
-        { text: "EDITING TASK: Image 1 is the MASTER BACKGROUND room to preserve exactly. Image 2 is the PRODUCT to place into it. Keep the room pixel-perfect identical. Only replace the furniture." },
+        { text: `${analysisPrefix}EDITING TASK: Image 1 is the MASTER BACKGROUND room to preserve exactly. Image 2 is the PRODUCT to place into it. Additional images show the SAME product from other angles — use them to understand every detail. Keep the room pixel-perfect identical. Only replace the furniture.` },
         { inlineData: { mimeType: masterMimeType, data: base64Master } },
         { inlineData: { mimeType: productMimeType, data: base64Product } },
+        ...additionalRefParts,
         { text: prompt },
       ];
     } else {
-      // ═══ IMAGE 1 or SINGLE: Standard generation ═══
+      // ═══ IMAGE 1 or SINGLE: Standard generation with all references ═══
       const refIntro = additionalRefParts.length > 0
-        ? `${PRODUCT_PRESERVATION}\n\nCRITICAL: The following ${1 + additionalRefParts.length} images show the SAME furniture product from different angles. Use ALL of them as reference to accurately reproduce this EXACT product. Only the background environment changes.`
-        : `${PRODUCT_PRESERVATION}\n\nCRITICAL: Preserve this EXACT furniture product unchanged. Only place it in a new environment.`;
+        ? `${analysisPrefix}${PRODUCT_PRESERVATION}\n\nCRITICAL: The following ${1 + additionalRefParts.length} images show the SAME furniture product from different angles. Use ALL of them as reference to accurately reproduce this EXACT product. Only the background environment changes.`
+        : `${analysisPrefix}${PRODUCT_PRESERVATION}\n\nCRITICAL: Preserve this EXACT furniture product unchanged. Only place it in a new environment.`;
       parts = [
         { text: refIntro },
         { inlineData: { mimeType: productMimeType, data: base64Product } },

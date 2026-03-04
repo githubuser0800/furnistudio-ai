@@ -104,7 +104,7 @@ export default function BatchUploadFlow({
   onCreditsChange,
 }: BatchUploadFlowProps) {
   const [step, setStep] = useState<
-    "upload" | "detect" | "shots" | "style" | "processing" | "results"
+    "upload" | "detect" | "shots" | "style" | "analysing" | "processing" | "results"
   >("upload");
   const [files, setFiles] = useState<StagedFile[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -244,10 +244,6 @@ export default function BatchUploadFlow({
     aspectRatio?: string,
   ) => {
     setShowStyleModal(false);
-    setStep("processing");
-    setStartTime(Date.now());
-    setElapsed(0);
-    setSelectedTemplateLabel(TEMPLATE_NAMES[templateId] || "Custom");
 
     const sourceFile = files.find((f) => f.uploaded && f.imageId);
     if (!sourceFile) return;
@@ -255,6 +251,34 @@ export default function BatchUploadFlow({
     const allImageIds = files
       .filter((f) => f.uploaded && f.imageId)
       .map((f) => f.imageId!);
+
+    // ── Phase 1: Analyse product ──
+    setStep("analysing");
+    setProcessingStatus("Analysing your product...");
+    let productAnalysis: string | null = null;
+
+    try {
+      console.log("[ShotList] Phase 1: Analysing product with", allImageIds.length, "images");
+      const { data: analysisData, error: analysisError } = await supabase.functions.invoke(
+        "analyse-product",
+        { body: { image_ids: allImageIds } }
+      );
+
+      if (analysisError || !analysisData?.success) {
+        console.warn("[ShotList] Product analysis failed, continuing without it:", analysisError || analysisData?.error);
+      } else {
+        productAnalysis = analysisData.product_analysis;
+        console.log("[ShotList] Product analysis complete:", productAnalysis?.substring(0, 200));
+      }
+    } catch (err) {
+      console.warn("[ShotList] Product analysis call failed:", err);
+    }
+
+    // ── Phase 2: Generate shots ──
+    setStep("processing");
+    setStartTime(Date.now());
+    setElapsed(0);
+    setSelectedTemplateLabel(TEMPLATE_NAMES[templateId] || "Custom");
 
     const selectedShotItems = SEATING_SHOT_LIST.filter((s) => selectedShots.includes(s.id));
     const shots = [...selectedShotItems].sort((a, b) => {
@@ -314,9 +338,13 @@ export default function BatchUploadFlow({
           .filter(Boolean)
           .join(". ");
 
+        const additionalIds = allImageIds.filter((id) => id !== sourceFile.imageId);
+
         const payload = {
           image_id: sourceFile.imageId,
           reference_image_ids: allImageIds,
+          additional_image_ids: additionalIds,
+          ...(productAnalysis ? { product_analysis: productAnalysis } : {}),
           template_id: templateId,
           resolution,
           custom_prompt: shotPrompt,
@@ -841,6 +869,23 @@ export default function BatchUploadFlow({
           loading={false}
           imageName={shotListMode ? `${readyCount} shots (shot list)` : `${readyCount} images (batch)`}
         />
+      </div>
+    );
+  }
+
+  // ========================
+  // STEP 4b: ANALYSING PRODUCT
+  // ========================
+  if (step === "analysing") {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-6">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />
+        <div className="text-center">
+          <h3 className="text-lg font-semibold mb-1">Analysing your product…</h3>
+          <p className="text-sm text-muted-foreground">
+            Studying all {files.filter(f => f.uploaded).length} uploaded images to understand every detail
+          </p>
+        </div>
       </div>
     );
   }
