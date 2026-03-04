@@ -57,6 +57,22 @@ const TEMPLATE_NAMES: Record<string, string> = {
   white_background: "White Background", grey_studio: "Grey Studio", showroom_floor: "Showroom Floor", custom: "Custom",
 };
 
+const SHOT_BACKEND_LABELS: Record<SeatingShot["id"], string> = {
+  hero: "3/4 Angle",
+  front: "Full Product",
+  side: "Side View",
+  rear: "Back View",
+  topdown: "Top View",
+  fabric: "Close-up: Fabric",
+  stitching: "Close-up: Detail",
+  leg: "Close-up: Detail",
+  lifestyle: "Full Product",
+};
+
+const SHOT_PROMPT_SUFFIX: Partial<Record<SeatingShot["id"], string>> = {
+  leg: "Focus on the leg and foot detail",
+};
+
 interface StagedFile {
   file: File;
   preview: string;
@@ -129,7 +145,7 @@ export default function BatchUploadFlow({
 
   const handleFilesSelected = (fileList: FileList | null) => {
     if (!fileList) return;
-    const maxFiles = shotListMode ? 1 : 10;
+    const maxFiles = 10;
     const newFiles = Array.from(fileList).slice(0, maxFiles - files.length).map((file) => ({
       file,
       preview: URL.createObjectURL(file),
@@ -220,7 +236,7 @@ export default function BatchUploadFlow({
     }
   };
 
-  // Shot-list-aware generation: generates each selected shot with the single uploaded image
+  // Shot-list-aware generation: generates selected seating shots using one master batch flow
   const handleShotListGenerate = async (
     templateId: string,
     resolution: string,
@@ -235,22 +251,39 @@ export default function BatchUploadFlow({
 
     const sourceFile = files.find((f) => f.uploaded && f.imageId);
     if (!sourceFile) return;
-    const allImageIds = files.filter((f) => f.uploaded && f.imageId).map((f) => f.imageId!);
 
-    const shots = SEATING_SHOT_LIST.filter((s) => selectedShots.includes(s.id));
+    const allImageIds = files
+      .filter((f) => f.uploaded && f.imageId)
+      .map((f) => f.imageId!);
+
+    const selectedShotItems = SEATING_SHOT_LIST.filter((s) => selectedShots.includes(s.id));
+    const shots = [...selectedShotItems].sort((a, b) => {
+      if (a.id === "hero") return -1;
+      if (b.id === "hero") return 1;
+      return a.number - b.number;
+    });
+
+    if (shots.length === 0) return;
+
     setProcessingTotal(shots.length);
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return;
 
     const setName = `Shot List — ${TEMPLATE_NAMES[templateId] || "Custom"} - ${new Date().toLocaleDateString("en-GB")}`;
-    const { data: setRecord } = await supabase.from("product_sets" as any).insert({
-      user_id: user.id,
-      name: setName,
-      template_id: templateId,
-      resolution,
-      image_count: shots.length,
-    } as any).select().single();
+    const { data: setRecord } = await supabase
+      .from("product_sets" as any)
+      .insert({
+        user_id: user.id,
+        name: setName,
+        template_id: templateId,
+        resolution,
+        image_count: shots.length,
+      } as any)
+      .select()
+      .single();
 
     const setId = (setRecord as any)?.id;
     const results: BatchResult[] = [];
@@ -259,16 +292,27 @@ export default function BatchUploadFlow({
 
     for (let i = 0; i < shots.length; i++) {
       const shot = shots[i];
-      setProcessingIndex(i + 1);
+      const backendLabel = SHOT_BACKEND_LABELS[shot.id] || shot.label;
 
+      setProcessingIndex(i + 1);
       if (i === 0) {
-        setProcessingStatus(`Creating room environment — ${shot.label}`);
+        setProcessingStatus(`Creating master room shot — ${shot.label}`);
       } else {
         setProcessingStatus(`Shot ${i + 1} of ${shots.length} — ${shot.label}`);
       }
 
       try {
-        const shotPrompt = [customPrompt, shot.promptHint].filter(Boolean).join(". ");
+        if (i > 0 && !masterBackgroundPath) {
+          throw new Error("Missing master_background_path from shot 1 response");
+        }
+
+        const shotPrompt = [
+          customPrompt,
+          shot.promptHint,
+          SHOT_PROMPT_SUFFIX[shot.id],
+        ]
+          .filter(Boolean)
+          .join(". ");
 
         const payload = {
           image_id: sourceFile.imageId,
@@ -279,19 +323,18 @@ export default function BatchUploadFlow({
           ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}),
           camera_angle: shot.cameraAngle,
           ...(setId ? { set_id: setId } : {}),
-          label: shot.label,
+          label: backendLabel,
           batch_index: i,
           batch_total: shots.length,
-          ...(i > 0 && masterBackgroundPath ? { master_background_path: masterBackgroundPath } : {}),
+          ...(i > 0 && masterBackgroundPath
+            ? { master_background_path: masterBackgroundPath }
+            : {}),
         };
 
-        console.log(`[ShotList] Shot ${i + 1}/${shots.length} "${shot.label}" payload:`, {
-          image_id: payload.image_id,
-          reference_image_ids: payload.reference_image_ids,
-          camera_angle: payload.camera_angle,
-          custom_prompt: payload.custom_prompt.substring(0, 120) + "...",
-          template_id: payload.template_id,
-        });
+        console.log(
+          `[ShotList] generate-staging payload ${i + 1}/${shots.length} (${shot.label})`,
+          payload
+        );
 
         const { data, error } = await supabase.functions.invoke("generate-staging", {
           body: payload,
@@ -310,7 +353,11 @@ export default function BatchUploadFlow({
         } else if (data?.success) {
           currentCredits = data.credits_remaining;
           onCreditsChange(currentCredits);
-          if (i === 0 && data.master_background_path) masterBackgroundPath = data.master_background_path;
+
+          if (i === 0) {
+            masterBackgroundPath = data.master_background_path || data.output_path || null;
+          }
+
           results.push({
             imageId: sourceFile.imageId!,
             label: shot.label,
@@ -553,11 +600,11 @@ export default function BatchUploadFlow({
       <div className="space-y-6">
         <div className="text-center">
           <h2 className="text-xl font-bold text-foreground">
-            {shotListMode ? "Upload your product photo" : "Drop your product images here"}
+            {shotListMode ? "Upload your product photos" : "Drop your product images here"}
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
             {shotListMode
-              ? "Upload 1 image · AI generates all selected angles"
+              ? "Upload up to 10 images · AI uses all as product references for every shot"
               : "Upload up to 10 images · Auto-detects shot types"}
           </p>
         </div>
@@ -579,7 +626,7 @@ export default function BatchUploadFlow({
             size="sm"
             onClick={() => {
               setShotListMode(true);
-              setFiles((prev) => prev.slice(0, 1));
+              setFiles((prev) => prev.slice(0, 10));
             }}
           >
             <LayoutGrid className="mr-1.5 h-3.5 w-3.5" /> Seating Shot List
@@ -596,14 +643,14 @@ export default function BatchUploadFlow({
             ref={fileInputRef}
             type="file"
             accept="image/*"
-            multiple={!shotListMode}
+            multiple
             className="hidden"
             onChange={(e) => handleFilesSelected(e.target.files)}
           />
           <Upload className="mb-3 h-10 w-10 text-muted-foreground" />
           <p className="text-sm font-medium text-foreground">Click to browse or drag & drop</p>
           <p className="text-xs text-muted-foreground mt-1">
-            {shotListMode ? "JPG, PNG, WebP · 1 product image" : "JPG, PNG, WebP · up to 10 images"}
+            {shotListMode ? "JPG, PNG, WebP · up to 10 reference images" : "JPG, PNG, WebP · up to 10 images"}
           </p>
         </div>
 
@@ -611,10 +658,10 @@ export default function BatchUploadFlow({
           <>
             <div className="flex items-center justify-between">
               <Badge variant="outline" className="px-3 py-1">
-                {shotListMode ? "1 image" : `${files.length}/10 images`}
+                {shotListMode ? `${files.length}/10 references` : `${files.length}/10 images`}
               </Badge>
             </div>
-            <div className={`grid gap-3 ${shotListMode ? "grid-cols-1 max-w-xs mx-auto" : "grid-cols-2 sm:grid-cols-3 md:grid-cols-5"}`}>
+            <div className={`grid gap-3 ${shotListMode ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4" : "grid-cols-2 sm:grid-cols-3 md:grid-cols-5"}`}>
               {files.map((f, i) => (
                 <div key={`${f.file.name}-${f.file.size}-${f.file.lastModified}`} className="relative rounded-xl border border-border bg-card overflow-hidden">
                   <button
@@ -631,7 +678,7 @@ export default function BatchUploadFlow({
                   </div>
                 </div>
               ))}
-              {!shotListMode && files.length < 10 && (
+              {files.length < 10 && (
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   className="rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center aspect-square hover:border-accent/50 transition-colors"
