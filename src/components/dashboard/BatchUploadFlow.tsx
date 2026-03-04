@@ -66,7 +66,7 @@ const SHOT_BACKEND_LABELS: Record<SeatingShot["id"], string> = {
   fabric: "Close-up: Fabric",
   stitching: "Close-up: Detail",
   leg: "Close-up: Detail",
-  lifestyle: "Full Product",
+  lifestyle: "Lifestyle",
 };
 
 const SHOT_PROMPT_SUFFIX: Partial<Record<SeatingShot["id"], string>> = {
@@ -127,6 +127,16 @@ export default function BatchUploadFlow({
   // Shot list mode state
   const [shotListMode, setShotListMode] = useState(false);
   const [selectedShots, setSelectedShots] = useState<string[]>(["hero"]);
+
+  // Batch context for retry
+  const [batchContext, setBatchContext] = useState<{
+    templateId: string;
+    resolution: string;
+    productAnalysis: string | null;
+    masterBackgroundPath: string | null;
+    allImageIds: string[];
+    totalShots: number;
+  } | null>(null);
 
   // Lightbox state
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -314,6 +324,16 @@ export default function BatchUploadFlow({
     let currentCredits = creditsRemaining;
     let masterBackgroundPath: string | null = null;
 
+    // Store batch context for retry
+    setBatchContext({
+      templateId,
+      resolution,
+      productAnalysis: productAnalysis,
+      masterBackgroundPath: null, // will be updated after shot 1
+      allImageIds,
+      totalShots: shots.length,
+    });
+
     for (let i = 0; i < shots.length; i++) {
       const shot = shots[i];
       const backendLabel = SHOT_BACKEND_LABELS[shot.id] || shot.label;
@@ -331,9 +351,9 @@ export default function BatchUploadFlow({
         }
 
         const shotPrompt = [
-          customPrompt,
           shot.promptHint,
           SHOT_PROMPT_SUFFIX[shot.id],
+          customPrompt,
         ]
           .filter(Boolean)
           .join(". ");
@@ -384,6 +404,7 @@ export default function BatchUploadFlow({
 
           if (i === 0) {
             masterBackgroundPath = data.master_background_path || data.output_path || null;
+            setBatchContext((prev) => prev ? { ...prev, masterBackgroundPath } : prev);
           }
 
           results.push({
@@ -430,25 +451,34 @@ export default function BatchUploadFlow({
 
     const sourceFile = files.find((f) => f.uploaded && f.imageId);
     if (!sourceFile) return;
-    const allImageIds = files.filter((f) => f.uploaded && f.imageId).map((f) => f.imageId!);
+    const allImageIds = batchContext?.allImageIds || files.filter((f) => f.uploaded && f.imageId).map((f) => f.imageId!);
+    const additionalIds = allImageIds.filter((id) => id !== sourceFile.imageId);
+    const backendLabel = SHOT_BACKEND_LABELS[shot.id] || shot.label;
+
+    // Determine batch index from current results
+    const shotIndex = batchResults.findIndex((r) => r.shotId === result.shotId);
+    const isHero = shot.id === "hero";
 
     try {
-      const shotPrompt = shot.promptHint;
+      const shotPrompt = [shot.promptHint, SHOT_PROMPT_SUFFIX[shot.id]].filter(Boolean).join(". ");
       const payload = {
         image_id: sourceFile.imageId,
         reference_image_ids: allImageIds,
-        template_id: "scandinavian",
-        resolution: "4k",
+        additional_image_ids: additionalIds,
+        ...(batchContext?.productAnalysis ? { product_analysis: batchContext.productAnalysis } : {}),
+        template_id: batchContext?.templateId || "scandinavian",
+        resolution: batchContext?.resolution || "4k",
         custom_prompt: shotPrompt,
         camera_angle: shot.cameraAngle,
-        label: shot.label,
+        label: backendLabel,
+        batch_index: shotIndex >= 0 ? shotIndex : 0,
+        batch_total: batchContext?.totalShots || batchResults.length,
+        ...(!isHero && batchContext?.masterBackgroundPath
+          ? { master_background_path: batchContext.masterBackgroundPath }
+          : {}),
       };
 
-      console.log(`[ShotList] Retry "${shot.label}" payload:`, {
-        image_id: payload.image_id,
-        reference_image_ids: payload.reference_image_ids,
-        camera_angle: payload.camera_angle,
-      });
+      console.log(`[ShotList] Retry "${shot.label}" payload:`, payload);
 
       const { data, error } = await supabase.functions.invoke("generate-staging", {
         body: payload,

@@ -134,6 +134,12 @@ const SHOT_TYPES: Record<string, ShotType> = {
       ? `45-degree three-quarter angle showing both the front face and one side of the product. Same room, same position as the original furniture. ${cfg.wallDescription}. ${cfg.flooring} floor. ${cfg.lightSource}.`
       : "45-degree three-quarter angle showing front and side. Same room, same position.",
   },
+  "lifestyle": {
+    framing: "Wide room shot with furniture as centrepiece, showing full styled environment with decor. Camera at standing eye level (150cm), 3-4 metres back.",
+    buildPrompt: (cfg) => cfg
+      ? `Wide establishing shot of the furniture as the centrepiece of ${cfg.roomDescription}. Camera at standing eye level (150cm), 3-4 metres back. Show surrounding decor, rugs, lamps, plants, artwork. ${cfg.wallDescription}. ${cfg.flooring} floor. ${cfg.lightSource} casting ${cfg.lightQuality}. ${cfg.propsPositioned}. The furniture occupies the central third of the frame with styled room context filling the rest.`
+      : "Wide room shot showing the furniture as centrepiece in a fully styled living environment. Camera at standing eye level, 3-4 metres back, with surrounding decor visible.",
+  },
 };
 
 function getShotType(label: string | undefined): ShotType {
@@ -496,7 +502,8 @@ function buildTemplatePrompt(
   resolution: string,
   cameraAngle: string | null,
   batchTotal: number = 1,
-  label?: string
+  label?: string,
+  customPrompt?: string
 ): string {
   const shotType = getShotType(label);
   const isCloseUp = (label || "").toLowerCase().includes("close-up") || (label || "").toLowerCase().includes("fabric");
@@ -538,7 +545,7 @@ ${shotPrompt}
 [TECHNICAL FLAVOR]: ${config.lensSpec}. ${imperfections[0]}. ${imperfections[1]}.
 
 [ASPECT RATIO]: ${aspectRatio || "1:1"}.
-[RESOLUTION]: Generate at the MAXIMUM possible resolution. Ultra high resolution output. Every detail must be crisp and sharp at full zoom.`;
+[RESOLUTION]: Generate at the MAXIMUM possible resolution. Ultra high resolution output. Every detail must be crisp and sharp at full zoom.${customPrompt ? `\n\nADDITIONAL SHOT DIRECTION: ${customPrompt}` : ""}`;
 }
 
 // ── Build a C.S.S.T. prompt from a custom user description (image 1 only) ──
@@ -578,7 +585,8 @@ function buildEditingPrompt(
   batchTotal: number,
   aspectRatio: string,
   resolution: string,
-  templateConfig: TemplateConfig | null
+  templateConfig: TemplateConfig | null,
+  customPrompt?: string
 ): string {
   const shotType = getShotType(label);
   const shotPrompt = shotType.buildPrompt(templateConfig);
@@ -616,7 +624,7 @@ ${PRODUCT_PRESERVATION}
 [TECHNICAL FLAVOR]: ${imperfections[0]}. ${imperfections[1]}.
 
 [ASPECT RATIO]: ${aspectRatio || "1:1"}.
-[RESOLUTION]: Generate at the MAXIMUM possible resolution. Ultra high resolution output.`;
+[RESOLUTION]: Generate at the MAXIMUM possible resolution. Ultra high resolution output.${customPrompt ? `\n\nADDITIONAL SHOT DIRECTION: ${customPrompt}` : ""}`;
 }
 
 
@@ -692,11 +700,11 @@ serve(async (req) => {
 
     if (isSubsequentInBatch && master_background_path) {
       // Images 2+: editing prompt with shot-type matching
-      prompt = buildEditingPrompt(label, batch_index, batch_total, aspect_ratio, resolution, templateConfig || null);
+      prompt = buildEditingPrompt(label, batch_index, batch_total, aspect_ratio, resolution, templateConfig || null, custom_prompt);
     } else if (template_id === "custom" && custom_prompt) {
       prompt = buildCustomPrompt(custom_prompt, aspect_ratio, resolution, camera_angle, isBatch ? batch_total : 1);
     } else if (templateConfig) {
-      prompt = buildTemplatePrompt(templateConfig, aspect_ratio, resolution, camera_angle, isBatch ? batch_total : 1, label);
+      prompt = buildTemplatePrompt(templateConfig, aspect_ratio, resolution, camera_angle, isBatch ? batch_total : 1, label, custom_prompt);
     } else {
       throw new Error("Invalid template");
     }
