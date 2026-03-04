@@ -23,6 +23,7 @@ import {
 import StyleSelectionModal from "./StyleSelectionModal";
 import ExportModal from "./ExportModal";
 import ShotPickerGrid from "./ShotPickerGrid";
+import ShotLightbox from "./ShotLightbox";
 import { SEATING_SHOT_LIST, type SeatingShot } from "@/constants/seatingShots";
 import {
   Select,
@@ -110,6 +111,10 @@ export default function BatchUploadFlow({
   // Shot list mode state
   const [shotListMode, setShotListMode] = useState(false);
   const [selectedShots, setSelectedShots] = useState<string[]>(["hero"]);
+
+  // Lightbox state
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
 
   // Timer for processing step
   useEffect(() => {
@@ -230,6 +235,7 @@ export default function BatchUploadFlow({
 
     const sourceFile = files.find((f) => f.uploaded && f.imageId);
     if (!sourceFile) return;
+    const allImageIds = files.filter((f) => f.uploaded && f.imageId).map((f) => f.imageId!);
 
     const shots = SEATING_SHOT_LIST.filter((s) => selectedShots.includes(s.id));
     setProcessingTotal(shots.length);
@@ -267,6 +273,7 @@ export default function BatchUploadFlow({
         const { data, error } = await supabase.functions.invoke("generate-staging", {
           body: {
             image_id: sourceFile.imageId,
+            ...(allImageIds.length > 1 ? { reference_image_ids: allImageIds } : {}),
             template_id: templateId,
             resolution,
             custom_prompt: shotPrompt,
@@ -896,7 +903,21 @@ export default function BatchUploadFlow({
           <div key={r.jobId || r.shotId || r.imageId + idx} className="rounded-xl border border-border bg-card overflow-hidden group">
             <div className="aspect-square overflow-hidden relative">
               {r.status === "completed" && r.afterUrl ? (
-                <img src={r.afterUrl} alt={r.label} className="h-full w-full object-cover" />
+                <img
+                  src={r.afterUrl}
+                  alt={r.label}
+                  className="h-full w-full object-cover cursor-pointer hover:scale-105 transition-transform duration-200"
+                  onClick={() => {
+                    const completedIndices = batchResults
+                      .map((br, i) => br.status === "completed" && br.afterUrl ? i : -1)
+                      .filter((i) => i >= 0);
+                    const lightboxIdx = completedIndices.indexOf(idx);
+                    if (lightboxIdx >= 0) {
+                      setLightboxIndex(lightboxIdx);
+                      setLightboxOpen(true);
+                    }
+                  }}
+                />
               ) : r.status === "failed" ? (
                 <div className="h-full w-full bg-destructive/5 flex items-center justify-center">
                   <AlertCircle className="h-8 w-8 text-destructive/50" />
@@ -988,6 +1009,16 @@ export default function BatchUploadFlow({
           batchUrls={completedResults.map((r) => ({ url: r.afterUrl, name: r.label || "image" }))}
         />
       )}
+
+      <ShotLightbox
+        images={batchResults
+          .filter((r) => r.status === "completed" && r.afterUrl)
+          .map((r) => ({ url: r.afterUrl, label: r.label || "Image" }))}
+        currentIndex={lightboxIndex}
+        open={lightboxOpen}
+        onClose={() => setLightboxOpen(false)}
+        onNavigate={setLightboxIndex}
+      />
     </div>
   );
 }
