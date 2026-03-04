@@ -660,7 +660,8 @@ serve(async (req) => {
       label,
       batch_index,
       batch_total,
-      master_background_path, // NEW: storage path of the master background image
+      master_background_path,
+      reference_image_ids, // Additional product image IDs for multi-angle reference
     } = await req.json();
 
     // Input validation
@@ -673,7 +674,7 @@ serve(async (req) => {
     if (aspect_ratio && !validAspectRatios.includes(aspect_ratio)) {
       throw new Error("Invalid aspect_ratio");
     }
-    const validAngles = ["eye_level", "standard", "elevated", "low_angle", "side_profile", "corner_view"];
+    const validAngles = ["eye_level", "standard", "elevated", "low_angle", "side_profile", "corner_view", "front", "rear_angle", "top_down", "macro"];
     if (camera_angle && !validAngles.includes(camera_angle)) {
       throw new Error("Invalid camera_angle");
     }
@@ -763,6 +764,36 @@ serve(async (req) => {
     const base64Product = base64Encode(imageBytes);
     const productMimeType = imageRecord.filename?.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
 
+    // ── Download additional reference images if provided ──
+    const additionalRefParts: Array<Record<string, unknown>> = [];
+    if (reference_image_ids && Array.isArray(reference_image_ids) && reference_image_ids.length > 0) {
+      // Filter out the primary image_id to avoid duplicates
+      const extraIds = reference_image_ids.filter((rid: string) => rid !== image_id);
+      console.log(`Downloading ${extraIds.length} additional reference images`);
+      for (const refId of extraIds) {
+        try {
+          const { data: refRecord } = await supabaseAdmin
+            .from("images")
+            .select("*")
+            .eq("id", refId)
+            .eq("user_id", user.id)
+            .single();
+          if (!refRecord?.original_url) continue;
+          const { data: refFileData } = await supabaseAdmin.storage
+            .from("furniture-images")
+            .download(refRecord.original_url);
+          if (!refFileData) continue;
+          const refBytes = new Uint8Array(await refFileData.arrayBuffer());
+          const refBase64 = base64Encode(refBytes);
+          const refMime = refRecord.filename?.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
+          additionalRefParts.push({ inlineData: { mimeType: refMime, data: refBase64 } });
+        } catch (e) {
+          console.warn(`Failed to download reference image ${refId}:`, e);
+        }
+      }
+      console.log(`Successfully loaded ${additionalRefParts.length} additional reference images`);
+    }
+
     // ── Download master background for images 2+ ──
     let base64Master: string | null = null;
     let masterMimeType = "image/png";
@@ -805,9 +836,13 @@ serve(async (req) => {
       ];
     } else {
       // ═══ IMAGE 1 or SINGLE: Standard generation ═══
+      const refIntro = additionalRefParts.length > 0
+        ? `${PRODUCT_PRESERVATION}\n\nCRITICAL: The following ${1 + additionalRefParts.length} images show the SAME furniture product from different angles. Use ALL of them as reference to accurately reproduce this EXACT product. Only the background environment changes.`
+        : `${PRODUCT_PRESERVATION}\n\nCRITICAL: Preserve this EXACT furniture product unchanged. Only place it in a new environment.`;
       parts = [
-        { text: `${PRODUCT_PRESERVATION}\n\nCRITICAL: Preserve this EXACT furniture product unchanged. Only place it in a new environment.` },
+        { text: refIntro },
         { inlineData: { mimeType: productMimeType, data: base64Product } },
+        ...additionalRefParts,
         { text: prompt },
       ];
     }

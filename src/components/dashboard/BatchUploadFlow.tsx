@@ -270,21 +270,31 @@ export default function BatchUploadFlow({
       try {
         const shotPrompt = [customPrompt, shot.promptHint].filter(Boolean).join(". ");
 
+        const payload = {
+          image_id: sourceFile.imageId,
+          reference_image_ids: allImageIds,
+          template_id: templateId,
+          resolution,
+          custom_prompt: shotPrompt,
+          ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}),
+          camera_angle: shot.cameraAngle,
+          ...(setId ? { set_id: setId } : {}),
+          label: shot.label,
+          batch_index: i,
+          batch_total: shots.length,
+          ...(i > 0 && masterBackgroundPath ? { master_background_path: masterBackgroundPath } : {}),
+        };
+
+        console.log(`[ShotList] Shot ${i + 1}/${shots.length} "${shot.label}" payload:`, {
+          image_id: payload.image_id,
+          reference_image_ids: payload.reference_image_ids,
+          camera_angle: payload.camera_angle,
+          custom_prompt: payload.custom_prompt.substring(0, 120) + "...",
+          template_id: payload.template_id,
+        });
+
         const { data, error } = await supabase.functions.invoke("generate-staging", {
-          body: {
-            image_id: sourceFile.imageId,
-            ...(allImageIds.length > 1 ? { reference_image_ids: allImageIds } : {}),
-            template_id: templateId,
-            resolution,
-            custom_prompt: shotPrompt,
-            ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}),
-            camera_angle: shot.cameraAngle,
-            ...(setId ? { set_id: setId } : {}),
-            label: shot.label,
-            batch_index: i,
-            batch_total: shots.length,
-            ...(i > 0 && masterBackgroundPath ? { master_background_path: masterBackgroundPath } : {}),
-          },
+          body: payload,
         });
 
         if (error || data?.error) {
@@ -345,17 +355,28 @@ export default function BatchUploadFlow({
 
     const sourceFile = files.find((f) => f.uploaded && f.imageId);
     if (!sourceFile) return;
+    const allImageIds = files.filter((f) => f.uploaded && f.imageId).map((f) => f.imageId!);
 
     try {
+      const shotPrompt = shot.promptHint;
+      const payload = {
+        image_id: sourceFile.imageId,
+        reference_image_ids: allImageIds,
+        template_id: "scandinavian",
+        resolution: "4k",
+        custom_prompt: shotPrompt,
+        camera_angle: shot.cameraAngle,
+        label: shot.label,
+      };
+
+      console.log(`[ShotList] Retry "${shot.label}" payload:`, {
+        image_id: payload.image_id,
+        reference_image_ids: payload.reference_image_ids,
+        camera_angle: payload.camera_angle,
+      });
+
       const { data, error } = await supabase.functions.invoke("generate-staging", {
-        body: {
-          image_id: sourceFile.imageId,
-          template_id: "scandinavian", // fallback
-          resolution: "4k",
-          custom_prompt: shot.promptHint,
-          camera_angle: shot.cameraAngle,
-          label: shot.label,
-        },
+        body: payload,
       });
 
       if (error || data?.error) {
