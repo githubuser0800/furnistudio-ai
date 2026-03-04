@@ -17,6 +17,21 @@ const PRODUCT_PRESERVATION = `PRIMARY REFERENCE PRESERVATION: The uploaded furni
 - EXACT textures - fabric weave, wood grain, metal finish
 This is product photography - the furniture must be the SAME product, not a similar one. Only the background environment changes.`;
 
+// ── End-of-prompt reinforcement + negative instructions ──
+const PRODUCT_REINFORCEMENT = `
+FINAL REMINDER — PRODUCT ACCURACY IS NON-NEGOTIABLE:
+The furniture in the output MUST be the EXACT same product from the reference images. Check every detail before finalising.
+
+DO NOT:
+- DO NOT change the number of cushions, seats, or sections
+- DO NOT add or remove legs, arms, or any structural element
+- DO NOT change the arm style, back shape, or silhouette
+- DO NOT alter the fabric colour, texture, or material type
+- DO NOT add buttons, tufting, piping, or hardware that is not in the reference
+- DO NOT remove stitching, seams, or details that ARE in the reference
+- DO NOT change the leg style, material, or finish
+- DO NOT substitute a different piece of furniture — it must be THIS exact product`;
+
 // ── Photorealistic Imperfections Pool ──
 const IMPERFECTIONS = [
   "Subtle handheld camera micro-vibration suggesting a real photographer held the camera",
@@ -533,7 +548,8 @@ ${shotPrompt}
 [TECHNICAL FLAVOR]: ${config.lensSpec}. ${imperfections[0]}. ${imperfections[1]}.
 
 [ASPECT RATIO]: ${aspectRatio || "1:1"}.
-[RESOLUTION]: Generate at the MAXIMUM possible resolution. Ultra high resolution output. Every detail must be crisp and sharp at full zoom.`;
+[RESOLUTION]: Generate at the MAXIMUM possible resolution. Ultra high resolution output. Every detail must be crisp and sharp at full zoom.
+${PRODUCT_REINFORCEMENT}`;
   }
 
   return `${batchNote}[CONTEXT]: This is a premium furniture e-commerce photograph for a UK retailer website. The tone is ${config.mood}. Think of it as ${config.contextAnchor}.
@@ -545,7 +561,8 @@ ${shotPrompt}
 [TECHNICAL FLAVOR]: ${config.lensSpec}. ${imperfections[0]}. ${imperfections[1]}.
 
 [ASPECT RATIO]: ${aspectRatio || "1:1"}.
-[RESOLUTION]: Generate at the MAXIMUM possible resolution. Ultra high resolution output. Every detail must be crisp and sharp at full zoom.${customPrompt ? `\n\nADDITIONAL SHOT DIRECTION: ${customPrompt}` : ""}`;
+[RESOLUTION]: Generate at the MAXIMUM possible resolution. Ultra high resolution output. Every detail must be crisp and sharp at full zoom.${customPrompt ? `\n\nADDITIONAL SHOT DIRECTION: ${customPrompt}` : ""}
+${PRODUCT_REINFORCEMENT}`;
 }
 
 // ── Build a C.S.S.T. prompt from a custom user description (image 1 only) ──
@@ -575,7 +592,8 @@ function buildCustomPrompt(
 [TECHNICAL FLAVOR]: Shot with a 35mm lens at f/4. ${imperfections[0]}. ${imperfections[1]}.
 
 [ASPECT RATIO]: ${aspectRatio || "1:1"}.
-[RESOLUTION]: Generate at the MAXIMUM possible resolution. Ultra high resolution output. Every detail must be crisp and sharp at full zoom.`;
+[RESOLUTION]: Generate at the MAXIMUM possible resolution. Ultra high resolution output. Every detail must be crisp and sharp at full zoom.
+${PRODUCT_REINFORCEMENT}`;
 }
 
 // ── Build editing prompt for images 2+ using shot-type matching (ROOM SHOTS ONLY) ──
@@ -624,7 +642,8 @@ ${PRODUCT_PRESERVATION}
 [TECHNICAL FLAVOR]: ${imperfections[0]}. ${imperfections[1]}.
 
 [ASPECT RATIO]: ${aspectRatio || "1:1"}.
-[RESOLUTION]: Generate at the MAXIMUM possible resolution. Ultra high resolution output.${customPrompt ? `\n\nADDITIONAL SHOT DIRECTION: ${customPrompt}` : ""}`;
+[RESOLUTION]: Generate at the MAXIMUM possible resolution. Ultra high resolution output.${customPrompt ? `\n\nADDITIONAL SHOT DIRECTION: ${customPrompt}` : ""}
+${PRODUCT_REINFORCEMENT}`;
 }
 
 // ── Build close-up prompt (independent generation, no master background) ──
@@ -655,7 +674,8 @@ ${PRODUCT_PRESERVATION}
 [TECHNICAL FLAVOR]: Macro lens at f/2.8 equivalent. ${imperfections[0]}. ${imperfections[1]}.
 
 [ASPECT RATIO]: ${aspectRatio || "1:1"}.
-[RESOLUTION]: Generate at the MAXIMUM possible resolution. Ultra high resolution output.`;
+[RESOLUTION]: Generate at the MAXIMUM possible resolution. Ultra high resolution output.
+${PRODUCT_REINFORCEMENT}`;
 }
 
 
@@ -938,10 +958,9 @@ serve(async (req) => {
     console.log(`[SHOT DEBUG] Shot ${shotNum} "${shotLabel}" [strategy: ${isCloseUpStrategy ? "closeup" : isSubsequentInBatch ? "editing" : "standard"}]\n  Parts:`, JSON.stringify(debugPartsLog, null, 2), `\n  Master BG: ${master_background_path || "none"}`);
 
     const candidateModels = [
+      "gemini-3-pro-image-preview",
       "gemini-2.5-flash-image",
       "gemini-2.5-flash-image-preview",
-      "gemini-2.0-flash-preview-image-generation",
-      "gemini-2.5-flash",
     ];
 
     let aiResponse: Response | null = null;
@@ -958,8 +977,11 @@ serve(async (req) => {
           body: JSON.stringify({
             contents: [{ parts }],
             generationConfig: {
-              temperature: 0.3,
+              temperature: 0.1,
               responseModalities: ["TEXT", "IMAGE"],
+              imageConfig: {
+                imageSize: "4K",
+              },
             },
           }),
         }
@@ -975,9 +997,15 @@ serve(async (req) => {
       aiErrorStatus = response.status;
       aiErrorText = errText;
 
-      const modelNotAvailable = response.status === 404 && /not found|not supported/i.test(errText);
-      if (modelNotAvailable) {
-        console.warn(`Gemini model unavailable: ${geminiModel}. Trying fallback.`);
+      // Retry on model not found (404), server errors (500/502/503), or overloaded
+      const shouldRetryNextModel =
+        (response.status === 404 && /not found|not supported/i.test(errText)) ||
+        response.status === 500 ||
+        response.status === 502 ||
+        response.status === 503;
+
+      if (shouldRetryNextModel) {
+        console.warn(`Gemini model ${geminiModel} failed (${response.status}). Trying fallback.`);
         continue;
       }
 
